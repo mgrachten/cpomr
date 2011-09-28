@@ -7,8 +7,7 @@ from scipy import signal,cluster
 from numpy.fft import fft2, ifft2
 from multiprocessing import Pool
 
-from utilities import argpartition 
-
+from utilities import argpartition, FakePool
 
 def getImageData(filename):
     imageFh = Image.open(filename)
@@ -94,19 +93,40 @@ def convolve(image1, image2, MinPad=True, pad=True):
         return (ifft2(fftimage)).real
 
 
-def preprocessPattern(bar):
+def preprocessPattern(bar,fn):
     N,M = bar.shape
     n = nu.arange(N)
     n = n*n[::-1]
     m = nu.arange(M)
     m = m*m[::-1]
     o,p = nu.meshgrid(n,m)
+
+    mask = nu.zeros(bar.shape)
+
+    mask[1:,:] += nu.diff(bar,axis=0)
+    mask[:,1:] += nu.diff(bar,axis=1)
+    mask = nu.abs(mask)
+    nu.savetxt('/tmp/n-{0}.txt'.format(fn),mask)
+    nu.savetxt('/tmp/np-{0}.txt'.format(fn),mask*bar)
+    
+    nu.savetxt('/tmp/p-{0}.txt'.format(fn),bar*o.T*p.T)
+    nu.savetxt('/tmp/m-{0}.txt'.format(fn),o.T*p.T)
+
+    #return bar*o.T*p.T
+    return bar
+
+def preprocessPatternNew(bar):
+    N,M = bar.shape
+    mask = nu.zeros(bar)
+    mask[1:,:] += nu.diff(bar,0)
+    mask[:,1:] += nu.diff(bar,1)
+    nu.savetxt('/tmp/m.txt',mask)
     #return bar*o.T*p.T
     return bar
 
 def getCoords(patfile,img,thr=.9):
     pat = getImageData(patfile)
-    pat = preprocessPattern(pat -.5)
+    pat = preprocessPattern(pat -.5,os.path.basename(patfile))
     r = convolve(img,pat,True,True)
     N,M = img.shape
     K,L = r.shape
@@ -181,6 +201,8 @@ def clusterInBar(coords,x1,x2,y1,y2):
     
     if inbar.shape[0] == 0:
         return None
+    if inbar.shape[0] == 1:
+        return inbar
     l = cluster.hierarchy.linkage(inbar)
     c = cluster.hierarchy.fcluster(l,2,criterion='distance')
     idict = argpartition(lambda x: x[0], nu.column_stack((c,nu.arange(len(c)))))
@@ -189,12 +211,27 @@ def clusterInBar(coords,x1,x2,y1,y2):
         patternLocations[i,:] = nu.mean(inbar[tuple(v),:],0)
     return nu.array(patternLocations,nu.int)
 
+def normalize(x):
+    xmin = nu.min(x)
+    xmax = nu.max(x)
+    assert xmin < xmax
+    return (x-xmin)/(xmax-xmin)
+
 class VocabularyItem(object):
-    def __init__(self,label,files):
-        self.label = label
-        self.files = files
+    def __init__(self,l,dirname):
+        parts = l.strip().split()
+        self.label = parts[0]
+        self.thresholds = [float(x) for x in parts[1::2]]
+        self.files = [os.path.join(dirname,x) for x in parts[2::2]]
+        
+    def getThresholds(self):
+        return self.thresholds
     def getFiles(self):
         return self.files
+    def getImage(self,i=0):
+        pat = getImageData(self.files[i])
+        nu.savetxt('/tmp/{0}.txt'.format(self.label),normalize(pat))
+        return normalize(pat)
     def __str__(self):
         return '{0} {1}'.format(self.label,self.files)
 
@@ -228,9 +265,7 @@ def makeVocabulary(vocabularyDir):
     with open(vocfile,'r') as f:
         for l in f.readlines():
             if l[0] is not '#':
-                x = l.strip().split()
-                vocabulary.addItem(VocabularyItem(x[0],[os.path.join(vocabularyDir,y) 
-                                                        for y in x[1:]]))
+                vocabulary.addItem(VocabularyItem(l,vocabularyDir))
     return vocabulary
 
 
@@ -241,14 +276,20 @@ def processPage(pageImg,vocabulary,pool):
 
     barresults = []
     for barPatternFile in barItem.getFiles():
-        barresults.append(pool.apply_async(getCoords,(barPatternFile,pageImg,.75)))
+        barresults.append(pool.apply_async(getCoords,(barPatternFile,pageImg,.8)))
 
     vocresults = []
-    for label in vocabulary.getLabels():
+    voclabels = vocabulary.getLabels()
+    for label in voclabels:
         vi = vocabulary.getItem(label)
         patternFile = vi.getFiles()[0]
+        thr = vi.getThresholds()[0]
+        #thresholds:
+        # f: .97
+        # p: .95
+        # bar: .8
         #getCoords(barPatternFile,pageImg,.75)
-        vocresults.append(pool.apply_async(getCoords,(patternFile,pageImg,.95)))
+        vocresults.append(pool.apply_async(getCoords,(patternFile,pageImg,thr)))
 
 
     barImage = nu.zeros(pageImg.shape)
@@ -290,7 +331,7 @@ def processPage(pageImg,vocabulary,pool):
             continue
         systemwidth = b_hcs[-1]-b_hcs[0]
         barwidths = nu.diff(b_hcs)
-        minWidth = .1*systemwidth
+        minWidth = .09*systemwidth
         # filter out unlikily short bars
         baridx = nu.arange(len(barwidths))[barwidths >= minWidth]
         assert len(b_hcs) > 1
@@ -301,9 +342,14 @@ def processPage(pageImg,vocabulary,pool):
                 print('pc',q,len(pc))
                 rpad = clusterInBar(pc,x1,x2,y1,y2)
                 if rpad is not None:
+                    vi = vocabulary.getItem(voclabels[q])
+                    viimg = vi.getImage()
+                    viw,vih = viimg.shape
                     for k in rpad:
                         r = 2
-                        globalpat[k[0]-r:k[0]+r,k[1]-r:k[1]+r] = 1
+                        #globalpat[k[0]-r:k[0]+r,k[1]-r:k[1]+r] = 1
+                        globalpat[k[0]-int(viw/2):k[0]-int(viw/2)+viw,
+                                  k[1]-int(vih/2):k[1]-int(vih/2)+vih] = viimg
             globalpat[x1:x2,y1] = .5
             globalpat[x1:x2,y2] = .5
             globalpat[x1,y1:y2] = .5
@@ -317,6 +363,7 @@ def processPage(pageImg,vocabulary,pool):
 if __name__ == '__main__':
     global img
     pool = Pool()
+    #pool = FakePool()
     vocabularyDir = './vocabularies/dme'
     vocabulary = makeVocabulary(vocabularyDir)
     imgfile = sys.argv[1]
