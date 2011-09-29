@@ -8,13 +8,13 @@ from numpy.fft import fft2, ifft2
 from multiprocessing import Pool
 
 from utilities import argpartition, FakePool
+from smooth import makeMask,normalize
 
 def getImageData(filename):
     imageFh = Image.open(filename)
     #data = nu.array(list(imageFh.getdata()))
     s = list(imageFh.size)
     s.reverse()
-    print(s)
     data = nu.array(imageFh.getdata()).reshape(tuple(s))
     img_min = nu.min(data)
     img_max = nu.max(data)
@@ -38,6 +38,33 @@ def writeImageDataNew(filename,data,color=(1,1,1),alphaChannel=None):
     im_b = Image.fromarray(nu.array(255*float(color[2])*ndata,nu.uint8)) # monochromatic image
     ach = Image.fromarray(alphaChannel) # monochromatic image
     imgrgba = Image.merge('RGBA', (im_r,im_g,im_b,ach)) # color image
+    imgrgba.save(filename)
+
+def writeImageDataNewNew(filename,size,im_r=None,im_g=None,im_b=None,alphaChannel=None):
+    #size = tuple(reversed(size))
+    #img = Image.new('RGBA',size)
+    print(nu.min(im_r),nu.max(im_r))
+    if im_r is None:
+        im_r = nu.zeros(size,nu.uint8)*255
+    else:
+        im_r = nu.array(im_r,nu.uint8)
+    if im_g is None:
+        im_g = nu.zeros(size,nu.uint8)*255
+    else:
+        im_g = nu.array(im_g,nu.uint8)
+    if im_b is None:
+        im_b = nu.zeros(size,nu.uint8)*255
+    else:
+        im_b = nu.array(im_b,nu.uint8)
+    if alphaChannel is None:
+        alphaChannel = nu.ones(size,nu.uint8)*255
+    else:
+        alphaChannel = nu.array(alphaChannel,nu.uint8)
+
+    imgrgba = Image.merge('RGBA', (Image.fromarray(im_r),
+                                   Image.fromarray(im_g),
+                                   Image.fromarray(im_b),
+                                   Image.fromarray(alphaChannel))) # color image
     imgrgba.save(filename)
 
 def writeImageData(filename,data,size=None):
@@ -101,19 +128,16 @@ def preprocessPattern(bar,fn):
     m = m*m[::-1]
     o,p = nu.meshgrid(n,m)
 
-    mask = nu.zeros(bar.shape)
+    mask = makeMask(bar)
 
-    mask[1:,:] += nu.diff(bar,axis=0)
-    mask[:,1:] += nu.diff(bar,axis=1)
-    mask = nu.abs(mask)
+    #mask = nu.abs(mask)
     nu.savetxt('/tmp/n-{0}.txt'.format(fn),mask)
     nu.savetxt('/tmp/np-{0}.txt'.format(fn),mask*bar)
     
-    nu.savetxt('/tmp/p-{0}.txt'.format(fn),bar*o.T*p.T)
-    nu.savetxt('/tmp/m-{0}.txt'.format(fn),o.T*p.T)
-
+    nu.savetxt('/tmp/p-{0}.txt'.format(fn),bar)
+    #nu.savetxt('/tmp/m-{0}.txt'.format(fn),o.T*p.T)
     #return bar*o.T*p.T
-    return bar
+    return bar*mask
 
 def preprocessPatternNew(bar):
     N,M = bar.shape
@@ -124,7 +148,7 @@ def preprocessPatternNew(bar):
     #return bar*o.T*p.T
     return bar
 
-def getCoords(patfile,img,thr=.9):
+def getCoords(img,patfile,thr=.9,returnImage=False,returnCoords=True):
     pat = getImageData(patfile)
     pat = preprocessPattern(pat -.5,os.path.basename(patfile))
     r = convolve(img,pat,True,True)
@@ -138,7 +162,18 @@ def getCoords(patfile,img,thr=.9):
     r = (r-imin)/(imax-imin)
     r[r < thr] = 0
     #nu.savetxt('/tmp/r',r[::-1,:])
-    return r,nu.column_stack(nu.nonzero(r))
+    if returnCoords and returnImage:
+        return r, nu.column_stack(nu.nonzero(r))
+    elif returnCoords:
+        coords = nu.column_stack(nu.nonzero(r))
+        del r
+        return coords
+    elif returnImage:
+        return r
+    else:
+        del r
+        return None
+
 
 def smooth(x,k):
     return nu.convolve(x,signal.hanning(k),'same')
@@ -189,7 +224,7 @@ def findBars(peaks,rbar):
         bar_hcoords.append(barpeaks)
         for bp in barpeaks:
             img[peak,bp] = 256
-    writeImageData('/tmp/bars.png',img)
+    #writeImageData('/tmp/bars.png',img)
     return bar_hcoords
     #w = nu.int(2*(w/2)+1)
     #hw = int(nu.floor(w/2))
@@ -210,12 +245,6 @@ def clusterInBar(coords,x1,x2,y1,y2):
     for i,(k,v) in enumerate(idict.items()):
         patternLocations[i,:] = nu.mean(inbar[tuple(v),:],0)
     return nu.array(patternLocations,nu.int)
-
-def normalize(x):
-    xmin = nu.min(x)
-    xmax = nu.max(x)
-    assert xmin < xmax
-    return (x-xmin)/(xmax-xmin)
 
 class VocabularyItem(object):
     def __init__(self,l,dirname):
@@ -269,14 +298,14 @@ def makeVocabulary(vocabularyDir):
     return vocabulary
 
 
-def processPage(pageImg,vocabulary,pool):
+def processPage(img,vocabulary,pool,outname):
     barItem = vocabulary.getBar()
     if barItem is None:
         return False
 
     barresults = []
     for barPatternFile in barItem.getFiles():
-        barresults.append(pool.apply_async(getCoords,(barPatternFile,pageImg,.8)))
+        barresults.append(pool.apply_async(getCoords,(img,barPatternFile,.8,True,False)))
 
     vocresults = []
     voclabels = vocabulary.getLabels()
@@ -284,25 +313,23 @@ def processPage(pageImg,vocabulary,pool):
         vi = vocabulary.getItem(label)
         patternFile = vi.getFiles()[0]
         thr = vi.getThresholds()[0]
-        #thresholds:
-        # f: .97
-        # p: .95
-        # bar: .8
-        #getCoords(barPatternFile,pageImg,.75)
-        vocresults.append(pool.apply_async(getCoords,(patternFile,pageImg,thr)))
+        vocresults.append(pool.apply_async(getCoords,(img,patternFile,thr,False,True)))
 
-
-    barImage = nu.zeros(pageImg.shape)
+    pool.close()
+    pool.join()
+    barImage = nu.zeros(img.shape)
     for br in barresults:
-        bi,bc = br.get()
-        barImage += bi
+        print('waiting for bar result...')
+        barImage += br.get()
+    print('finding systems...')
     barImage = barImage/len(barresults)
     #rbar,cbar = barresult.get()
     system_vcoords = findSystems(barImage)
     assert len(system_vcoords) > 0
     system_vcoords.sort()
+    print('finding bars...')
     bar_hcoords = findBars(system_vcoords,barImage)
-
+    del barImage
     assert len(system_vcoords) > 1
 
     validSystemIdx = []
@@ -322,16 +349,18 @@ def processPage(pageImg,vocabulary,pool):
     
     patternCoords = []
     for vr in vocresults:
-        patimg,patcoords = vr.get()
+        print('waiting for pattern results...')
+        patcoords = vr.get()
         patternCoords.append(patcoords)
 
+    print('allocating patterns to bars...')
     for i,s_vc in enumerate(system_vcoords):
         b_hcs = bar_hcoords[i]
         if len(b_hcs) < 1:
             continue
         systemwidth = b_hcs[-1]-b_hcs[0]
         barwidths = nu.diff(b_hcs)
-        minWidth = .09*systemwidth
+        minWidth = .0*systemwidth
         # filter out unlikily short bars
         baridx = nu.arange(len(barwidths))[barwidths >= minWidth]
         assert len(b_hcs) > 1
@@ -339,7 +368,7 @@ def processPage(pageImg,vocabulary,pool):
             x1,x2 = sbounds[i],sbounds[i+1]
             y1,y2 = b_hcs[j],b_hcs[j+1]
             for q,pc in enumerate(patternCoords):
-                print('pc',q,len(pc))
+                #print('pc',q,len(pc))
                 rpad = clusterInBar(pc,x1,x2,y1,y2)
                 if rpad is not None:
                     vi = vocabulary.getItem(voclabels[q])
@@ -350,26 +379,40 @@ def processPage(pageImg,vocabulary,pool):
                         #globalpat[k[0]-r:k[0]+r,k[1]-r:k[1]+r] = 1
                         globalpat[k[0]-int(viw/2):k[0]-int(viw/2)+viw,
                                   k[1]-int(vih/2):k[1]-int(vih/2)+vih] = viimg
-            globalpat[x1:x2,y1] = .5
-            globalpat[x1:x2,y2] = .5
-            globalpat[x1,y1:y2] = .5
-            globalpat[x2,y1:y2] = .5
-    alphaChannel = nu.array(nu.array(globalpat,nu.bool)*200,nu.uint8)
+            globalpat[x1:x2,y1] = 1
+            globalpat[x1:x2,y2] = 1
+            globalpat[x1,y1:y2] = 1
+            globalpat[x2,y1:y2] = 1
+    #alphaChannel = nu.array(nu.array(globalpat,nu.bool)*200,nu.uint8)
     #alphaChannel = nu.array(globalpat*200,nu.uint8)
-    #alphaChannel = nu.zeros(globalpat.shape,nu.uint8)+255
-    writeImageDataNew('/tmp/pat.png',nu.array(globalpat,nu.uint8),(1.0,1.0,0),alphaChannel)
+    #alphaChannel = nu.zeros(globalpat.shape,nu.uint8)+0
+    nPageImg = normalize(img)
+    im_r = nu.minimum(nPageImg,1-.5*globalpat)
+    im_r = nu.array((1-im_r)*255,nu.uint8)
+    im_g = nu.maximum(nPageImg,globalpat)
+    del nPageImg
+    im_g = nu.array((1-im_g)*255,nu.uint8)
+    im_b = im_g #nu.array((1-normalize(pageImg))*255,nu.uint8)
+    print(nu.min(im_g),nu.max(im_g))
+    #writeImageDataNewNew('/tmp/pat.png',pageImg.shape,im_r,im_g,im_b)
+    writeImageDataNewNew(outname,img.shape,im_r,im_g,im_b)
+                         
+                         
+
+    #writeImageData('/tmp/pat.png',nu.array(normalize(1-normalize(pageImg)+globalpat)*200,nu.uint8))
 
 
 if __name__ == '__main__':
-    global img
-    pool = Pool()
-    #pool = FakePool()
-    vocabularyDir = './vocabularies/dme'
+    #pool = Pool()
+    pool = FakePool()
+    vocabularyDir = './vocabularies/dme-4096'
     vocabulary = makeVocabulary(vocabularyDir)
     imgfile = sys.argv[1]
     img = getImageData(imgfile)
     img = img -.5
-
-    processPage(img,vocabulary,pool)
+    #print(img[10,10])
+    #sys.exit()
+    outname= os.path.join('/tmp/',os.path.basename(imgfile))
+    processPage(img,vocabulary,pool,outname)
     pool.close()
     pool.join()
