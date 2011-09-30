@@ -6,6 +6,7 @@ from scipy import signal,cluster
 from numpy.fft import fft2, ifft2
 from multiprocessing import Pool
 
+import shared
 from utilities import argpartition, FakePool
 from imageUtil import getImageData, writeImageData, makeMask, normalize
 from scoreVocabulary import makeVocabulary
@@ -48,11 +49,11 @@ def convolve(image1, image2, MinPad=True, pad=True):
     else:
         return (ifft2(fftimage)).real
 
-def getCoords(img,patfile,thr=.9,returnImage=False,returnCoords=True):
+def getCoords(patfile,thr=.9,returnImage=False,returnCoords=True,convp1=True,convp2=True):
     pat = getImageData(patfile)-.5
     #pat = preprocessPattern(pat -.5,os.path.basename(patfile))
     pat = pat*makeMask(pat)
-    r = convolve(img,pat,True,True)
+    r = convolve(shared.img,pat,convp1,convp2)
     N,M = img.shape
     K,L = r.shape
     w = (K-N)/2
@@ -128,6 +129,19 @@ def clusterInBar(coords,x1,x2,y1,y2):
         patternLocations[i,:] = nu.mean(inbar[tuple(v),:],0)
     return nu.array(patternLocations,nu.int)
 
+def clusterCoords(coords):
+    if coords.shape[0] == 0:
+        return None
+    if coords.shape[0] == 1:
+        return coords
+    l = cluster.hierarchy.linkage(coords)
+    c = cluster.hierarchy.fcluster(l,2,criterion='distance')
+    idict = argpartition(lambda x: x[0], nu.column_stack((c,nu.arange(len(c)))))
+    patternLocations = nu.empty((len(idict),2))
+    for i,(k,v) in enumerate(idict.items()):
+        patternLocations[i,:] = nu.mean(coords[tuple(v),:],0)
+    return nu.array(patternLocations,nu.int)
+
 class Bar(object):
     def __init__(self,vcenter,left,right,top,bottom):
         self.vcenter = vcenter
@@ -135,13 +149,33 @@ class Bar(object):
         self.right = right
         self.top = top
         self.bottom = bottom
-    def drawOnImage(self,img):
-        
-def getBarBBs(barItem):
-    barImage = nu.zeros(img.shape)
-    for barPatternFile in barItem.getFiles():
-        barImg += getCoords(img,barPatternFile,.8,True,False)
+    def __str__(self):
+        return 'Bar:\n\tleft: {0}\n\tright: {1}\n\ttop: {2}\n\tbottom: {3}'.format(self.left,
+                                                                                   self.right,
+                                                                                   self.top,
+                                                                                   self.bottom)
+    def getSubImage(self,img):
+        return img[self.top:self.bottom,self.left:self.right]
 
+    def drawOnImage(self,img):
+        img[self.top,self.left:self.right] = 1
+        img[self.bottom,self.left:self.right] = 1
+        img[self.top:self.bottom,self.left] = 1
+        img[self.top:self.bottom,self.right] = 1
+        return img
+
+def getBarBBs(barItem):
+    barImage = nu.zeros(shared.img.shape)
+    barResults = []
+    for i,barPatternFile in enumerate(barItem.getFiles()):
+        barResults.append(shared.pool.apply_async(getCoords,(barPatternFile, barItem.getThreshold(i),True,False)))
+        # barImage += getCoords(img,
+        #                     barPatternFile,
+        #                     barItem.getThreshold(i),
+        #                     True,False)
+
+    for r in barResults:
+        barImage += r.get()
     print('finding systems...')
     barImage = barImage/len(barItem.getFiles())
     system_vcoords = findSystems(barImage)
@@ -158,18 +192,65 @@ def getBarBBs(barItem):
     validSystemIdx = nu.array(validSystemIdx,nu.uint)
     system_vcoords = system_vcoords[validSystemIdx]
     bar_hcoords = [bar_hcoords[x] for x in validSystemIdx]
+
     # determine widths of systems
     system_vcoords = nu.array(system_vcoords,nu.float)
+    # amount by which the 1/2 height of the first and last system
+    # is scaled:
+    ff = 1.5
     sbounds = (system_vcoords[1:]+system_vcoords[:-1])/2
-    sbounds = nu.insert(sbounds,0,2*system_vcoords[0]-1.5*sbounds[0])
-    sbounds = nu.append(sbounds,2*system_vcoords[-1]-1.5*sbounds[-1])
+    sbounds = nu.insert(sbounds,0,int((1+ff)*system_vcoords[0]-ff*sbounds[0]))
+    sbounds = nu.append(sbounds,int((1+ff)*system_vcoords[-1]-ff*sbounds[-1]))
 
-    return system_vcoords, bar_hcoords
+    bars = []
+    for i,system_vcenter in enumerate(system_vcoords):
+        b_hcs = bar_hcoords[i]
+        if len(b_hcs) < 1:
+            continue
+        systemwidth = b_hcs[-1]-b_hcs[0]
+        barwidths = nu.diff(b_hcs)
+        minWidth = .02*systemwidth
+        # filter out unlikily short bars
+        baridx = nu.arange(len(barwidths))[barwidths >= minWidth]
+        for j in baridx:
+            top,bottom = int(nu.round(sbounds[i])),int(nu.round(sbounds[i+1]))
+            left,right = int(nu.round(b_hcs[j])),int(nu.round(b_hcs[j+1]))
+            bars.append(Bar(system_vcenter,left,right,top,bottom))
+    return bars
 
-def processPage(img,vocabulary,pool,outname):
+def processPage(vocabulary,outname):
     barItem = vocabulary.getBar()
     if barItem is None:
         return False
+
+    bars = getBarBBs(barItem)
+
+    
+    shared.pool.close()
+    shared.pool.join()
+    voclabels = []#vocabulary.getLabels()
+    for bar in bars:
+        print(bar)
+        bar.drawOnImage(shared.newImg)
+        for label in voclabels:
+            print(label)
+            vi = vocabulary.getItem(label)
+            patternFile = vi.getFiles()[0]
+            thr = vi.getThresholds()[0]
+            pimg,pcoord = getCoords(bar.getSubImage(img),patternFile,thr,True,True,False,False)
+            print(clusterCoords(pcoord))
+            nu.savetxt('/tmp/o.txt',pimg)
+            sys.exit()
+
+    normImg = normalize(shared.img)
+    im_r = nu.minimum(normImg,1-.5*shared.newImg)
+    im_r = nu.array((1-im_r)*255,nu.uint8)
+    im_g = nu.maximum(normImg,shared.newImg)
+    im_g = nu.array((1-im_g)*255,nu.uint8)
+    im_b = im_g
+    writeImageData(outname,shared.img.shape,im_r,im_g,im_b)
+
+    sys.exit()
 
 
     vocresults = []
@@ -184,7 +265,6 @@ def processPage(img,vocabulary,pool,outname):
     pool.join()
 
     assert len(system_vcoords) > 1
-
 
     globalpat = nu.zeros(img.shape,nu.float)
     
@@ -237,18 +317,15 @@ def processPage(img,vocabulary,pool,outname):
     print(nu.min(im_g),nu.max(im_g))
     writeImageData(outname,img.shape,im_r,im_g,im_b)
                          
-
 if __name__ == '__main__':
-    #pool = Pool()
-    pool = FakePool()
     vocabularyDir = './vocabularies/dme-4096'
     vocabulary = makeVocabulary(vocabularyDir)
     imgfile = sys.argv[1]
     img = getImageData(imgfile)
     img = img -.5
-    #print(img[10,10])
-    #sys.exit()
+    shared.img = img
+    shared.newImg = nu.zeros(shared.img.shape,nu.float)
+    shared.pool = Pool()
+    #shared.pool = FakePool()
     outname= os.path.join('/tmp/',os.path.basename(imgfile))
-    processPage(img,vocabulary,pool,outname)
-    pool.close()
-    pool.join()
+    processPage(vocabulary,outname)
