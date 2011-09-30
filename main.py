@@ -1,85 +1,14 @@
 #!/usr/bin/env python
 
 import sys,os
-from PIL import Image
 import numpy as nu
 from scipy import signal,cluster
 from numpy.fft import fft2, ifft2
 from multiprocessing import Pool
 
 from utilities import argpartition, FakePool
-from smooth import makeMask,normalize
-
-def getImageData(filename):
-    imageFh = Image.open(filename)
-    #data = nu.array(list(imageFh.getdata()))
-    s = list(imageFh.size)
-    s.reverse()
-    data = nu.array(imageFh.getdata()).reshape(tuple(s))
-    img_min = nu.min(data)
-    img_max = nu.max(data)
-    return 1-(nu.array(data,nu.float)-img_min)/(img_max-img_min)
-
-def writeImageDataNew(filename,data,color=(1,1,1),alphaChannel=None):
-    size = tuple(reversed(data.shape))
-    #img = Image.new('RGBA',size)
-    dmin = nu.min(data)
-    dmax = nu.max(data)
-    if dmin >= 0 and dmax <= 1: 
-        ndata = data
-    else:
-        ndata = (data-dmin)/(dmax-dmin)
-
-    if alphaChannel is None:
-        alphaChannel = nu.ones(data.shape,nu.uint8)*255
-    assert alphaChannel.size == data.size
-    im_r = Image.fromarray(nu.array(255*float(color[0])*ndata,nu.uint8)) # monochromatic image
-    im_g = Image.fromarray(nu.array(255*float(color[1])*ndata,nu.uint8)) # monochromatic image
-    im_b = Image.fromarray(nu.array(255*float(color[2])*ndata,nu.uint8)) # monochromatic image
-    ach = Image.fromarray(alphaChannel) # monochromatic image
-    imgrgba = Image.merge('RGBA', (im_r,im_g,im_b,ach)) # color image
-    imgrgba.save(filename)
-
-def writeImageDataNewNew(filename,size,im_r=None,im_g=None,im_b=None,alphaChannel=None):
-    #size = tuple(reversed(size))
-    #img = Image.new('RGBA',size)
-    print(nu.min(im_r),nu.max(im_r))
-    if im_r is None:
-        im_r = nu.zeros(size,nu.uint8)*255
-    else:
-        im_r = nu.array(im_r,nu.uint8)
-    if im_g is None:
-        im_g = nu.zeros(size,nu.uint8)*255
-    else:
-        im_g = nu.array(im_g,nu.uint8)
-    if im_b is None:
-        im_b = nu.zeros(size,nu.uint8)*255
-    else:
-        im_b = nu.array(im_b,nu.uint8)
-    if alphaChannel is None:
-        alphaChannel = nu.ones(size,nu.uint8)*255
-    else:
-        alphaChannel = nu.array(alphaChannel,nu.uint8)
-
-    imgrgba = Image.merge('RGBA', (Image.fromarray(im_r),
-                                   Image.fromarray(im_g),
-                                   Image.fromarray(im_b),
-                                   Image.fromarray(alphaChannel))) # color image
-    imgrgba.save(filename)
-
-def writeImageData(filename,data,size=None):
-    """Write the value of numpy array data as an image to filename. If
-    size is not specified, the shape of the array is taken to
-    determine the image size. The file encoding is guessed from the
-    filename (extension). The image is greyscale."""
-    if size == None:
-        size = list(data.shape)+[1]*(2-len(list(data.shape)))
-        size.reverse()
-    data.resize((data.size,))
-    imageFh = Image.new('L',size)
-    imageFh.putdata(data)
-    imageFh.save(filename)
-    return True
+from imageUtil import getImageData, writeImageData, makeMask, normalize
+from scoreVocabulary import makeVocabulary
 
 def convolve(image1, image2, MinPad=True, pad=True):
     """
@@ -119,38 +48,10 @@ def convolve(image1, image2, MinPad=True, pad=True):
     else:
         return (ifft2(fftimage)).real
 
-
-def preprocessPattern(bar,fn):
-    N,M = bar.shape
-    n = nu.arange(N)
-    n = n*n[::-1]
-    m = nu.arange(M)
-    m = m*m[::-1]
-    o,p = nu.meshgrid(n,m)
-
-    mask = makeMask(bar)
-
-    #mask = nu.abs(mask)
-    nu.savetxt('/tmp/n-{0}.txt'.format(fn),mask)
-    nu.savetxt('/tmp/np-{0}.txt'.format(fn),mask*bar)
-    
-    nu.savetxt('/tmp/p-{0}.txt'.format(fn),bar)
-    #nu.savetxt('/tmp/m-{0}.txt'.format(fn),o.T*p.T)
-    #return bar*o.T*p.T
-    return bar*mask
-
-def preprocessPatternNew(bar):
-    N,M = bar.shape
-    mask = nu.zeros(bar)
-    mask[1:,:] += nu.diff(bar,0)
-    mask[:,1:] += nu.diff(bar,1)
-    nu.savetxt('/tmp/m.txt',mask)
-    #return bar*o.T*p.T
-    return bar
-
 def getCoords(img,patfile,thr=.9,returnImage=False,returnCoords=True):
-    pat = getImageData(patfile)
-    pat = preprocessPattern(pat -.5,os.path.basename(patfile))
+    pat = getImageData(patfile)-.5
+    #pat = preprocessPattern(pat -.5,os.path.basename(patfile))
+    pat = pat*makeMask(pat)
     r = convolve(img,pat,True,True)
     N,M = img.shape
     K,L = r.shape
@@ -185,21 +86,7 @@ def findPeaks(v):
     x[2:len(x)-2] = nu.diff(nu.diff(nu.sign(nu.diff(v)),2))
     x[x<2] = 0
     peaks = nu.nonzero(x)[0]
-    if True:
-        return peaks
-    # superfluous
-    if len(peaks) < 2:
-        return peaks
-    w = nu.mean(nu.diff(peaks))*.5
-    w = nu.int(2*(w/2)+1)
-    hw = int(nu.floor(w/2))
-    y = x[:]
-    for p in peaks:
-        y[p-hw:p+hw+1] = .5
-    nu.savetxt('/tmp/s.txt',y)
-    nu.savetxt('/tmp/v.txt',v)
-    nu.savetxt('/tmp/p.txt',x)
-    return peaks#x,w
+    return peaks
 
 def findSystems(r):
     vhist = nu.sum(r,1)
@@ -208,8 +95,6 @@ def findSystems(r):
     K = int(N/(2*typicalNrOfSystemPerPage))+1
     vhist = smooth(vhist,K)
     return findPeaks(vhist)
-#nu.savetxt('/tmp/peaks.txt',findPeaks(vhist))
-#nu.savetxt('/tmp/vhist.txt',vhist)
 
 def findBars(peaks,rbar):
     img = nu.zeros(rbar.shape,nu.uint)
@@ -224,10 +109,7 @@ def findBars(peaks,rbar):
         bar_hcoords.append(barpeaks)
         for bp in barpeaks:
             img[peak,bp] = 256
-    #writeImageData('/tmp/bars.png',img)
     return bar_hcoords
-    #w = nu.int(2*(w/2)+1)
-    #hw = int(nu.floor(w/2))
 
 def clusterInBar(coords,x1,x2,y1,y2):
     margin = 5
@@ -245,58 +127,6 @@ def clusterInBar(coords,x1,x2,y1,y2):
     for i,(k,v) in enumerate(idict.items()):
         patternLocations[i,:] = nu.mean(inbar[tuple(v),:],0)
     return nu.array(patternLocations,nu.int)
-
-class VocabularyItem(object):
-    def __init__(self,l,dirname):
-        parts = l.strip().split()
-        self.label = parts[0]
-        self.thresholds = [float(x) for x in parts[1::2]]
-        self.files = [os.path.join(dirname,x) for x in parts[2::2]]
-        
-    def getThresholds(self):
-        return self.thresholds
-    def getFiles(self):
-        return self.files
-    def getImage(self,i=0):
-        pat = getImageData(self.files[i])
-        nu.savetxt('/tmp/{0}.txt'.format(self.label),normalize(pat))
-        return normalize(pat)
-    def __str__(self):
-        return '{0} {1}'.format(self.label,self.files)
-
-class Vocabulary(object):
-    def __init__(self):
-        self.vocItems = {}
-    def addItem(self,vi):
-        self.vocItems[vi.label] = vi
-    def getItem(self,label):
-        return self.vocItems.get(label,None)
-
-class ScoreVocabulary(Vocabulary):
-    def __init__(self):
-        super(ScoreVocabulary,self).__init__()
-        self.bar = None
-    def addItem(self,vi):
-        if vi.label == 'bar':
-            self.bar = vi
-        else:
-            self.vocItems[vi.label] = vi
-    def getItem(self,label):
-        return self.vocItems.get(label,None)
-    def getLabels(self):
-        return self.vocItems.keys()
-    def getBar(self):
-        return self.bar
-
-def makeVocabulary(vocabularyDir):
-    vocfile = os.path.join(vocabularyDir,'vocabulary.txt')
-    vocabulary = ScoreVocabulary()
-    with open(vocfile,'r') as f:
-        for l in f.readlines():
-            if l[0] is not '#':
-                vocabulary.addItem(VocabularyItem(l,vocabularyDir))
-    return vocabulary
-
 
 def processPage(img,vocabulary,pool,outname):
     barItem = vocabulary.getBar()
@@ -395,7 +225,7 @@ def processPage(img,vocabulary,pool,outname):
     im_b = im_g #nu.array((1-normalize(pageImg))*255,nu.uint8)
     print(nu.min(im_g),nu.max(im_g))
     #writeImageDataNewNew('/tmp/pat.png',pageImg.shape,im_r,im_g,im_b)
-    writeImageDataNewNew(outname,img.shape,im_r,im_g,im_b)
+    writeImageData(outname,img.shape,im_r,im_g,im_b)
                          
                          
 
