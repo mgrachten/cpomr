@@ -128,39 +128,28 @@ def clusterInBar(coords,x1,x2,y1,y2):
         patternLocations[i,:] = nu.mean(inbar[tuple(v),:],0)
     return nu.array(patternLocations,nu.int)
 
-def processPage(img,vocabulary,pool,outname):
-    barItem = vocabulary.getBar()
-    if barItem is None:
-        return False
-
-    barresults = []
-    for barPatternFile in barItem.getFiles():
-        barresults.append(pool.apply_async(getCoords,(img,barPatternFile,.8,True,False)))
-
-    vocresults = []
-    voclabels = vocabulary.getLabels()
-    for label in voclabels:
-        vi = vocabulary.getItem(label)
-        patternFile = vi.getFiles()[0]
-        thr = vi.getThresholds()[0]
-        vocresults.append(pool.apply_async(getCoords,(img,patternFile,thr,False,True)))
-
-    pool.close()
-    pool.join()
+class Bar(object):
+    def __init__(self,vcenter,left,right,top,bottom):
+        self.vcenter = vcenter
+        self.left = left
+        self.right = right
+        self.top = top
+        self.bottom = bottom
+    def drawOnImage(self,img):
+        
+def getBarBBs(barItem):
     barImage = nu.zeros(img.shape)
-    for br in barresults:
-        print('waiting for bar result...')
-        barImage += br.get()
+    for barPatternFile in barItem.getFiles():
+        barImg += getCoords(img,barPatternFile,.8,True,False)
+
     print('finding systems...')
-    barImage = barImage/len(barresults)
-    #rbar,cbar = barresult.get()
+    barImage = barImage/len(barItem.getFiles())
     system_vcoords = findSystems(barImage)
     assert len(system_vcoords) > 0
     system_vcoords.sort()
     print('finding bars...')
     bar_hcoords = findBars(system_vcoords,barImage)
     del barImage
-    assert len(system_vcoords) > 1
 
     validSystemIdx = []
     for i,v in enumerate(system_vcoords):
@@ -172,8 +161,30 @@ def processPage(img,vocabulary,pool,outname):
     # determine widths of systems
     system_vcoords = nu.array(system_vcoords,nu.float)
     sbounds = (system_vcoords[1:]+system_vcoords[:-1])/2
-    sbounds = nu.insert(sbounds,0,2*system_vcoords[0]-sbounds[0])
-    sbounds = nu.append(sbounds,2*system_vcoords[-1]-sbounds[-1])
+    sbounds = nu.insert(sbounds,0,2*system_vcoords[0]-1.5*sbounds[0])
+    sbounds = nu.append(sbounds,2*system_vcoords[-1]-1.5*sbounds[-1])
+
+    return system_vcoords, bar_hcoords
+
+def processPage(img,vocabulary,pool,outname):
+    barItem = vocabulary.getBar()
+    if barItem is None:
+        return False
+
+
+    vocresults = []
+    voclabels = vocabulary.getLabels()
+    for label in voclabels:
+        vi = vocabulary.getItem(label)
+        patternFile = vi.getFiles()[0]
+        thr = vi.getThresholds()[0]
+        vocresults.append(pool.apply_async(getCoords,(img,patternFile,thr,False,True)))
+
+    pool.close()
+    pool.join()
+
+    assert len(system_vcoords) > 1
+
 
     globalpat = nu.zeros(img.shape,nu.float)
     
@@ -222,15 +233,10 @@ def processPage(img,vocabulary,pool,outname):
     im_g = nu.maximum(nPageImg,globalpat)
     del nPageImg
     im_g = nu.array((1-im_g)*255,nu.uint8)
-    im_b = im_g #nu.array((1-normalize(pageImg))*255,nu.uint8)
+    im_b = im_g
     print(nu.min(im_g),nu.max(im_g))
-    #writeImageDataNewNew('/tmp/pat.png',pageImg.shape,im_r,im_g,im_b)
     writeImageData(outname,img.shape,im_r,im_g,im_b)
                          
-                         
-
-    #writeImageData('/tmp/pat.png',nu.array(normalize(1-normalize(pageImg)+globalpat)*200,nu.uint8))
-
 
 if __name__ == '__main__':
     #pool = Pool()
