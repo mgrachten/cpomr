@@ -172,8 +172,9 @@ def processPage(img,vocabulary,pool,outname):
     # determine widths of systems
     system_vcoords = nu.array(system_vcoords,nu.float)
     sbounds = (system_vcoords[1:]+system_vcoords[:-1])/2
-    sbounds = nu.insert(sbounds,0,2*system_vcoords[0]-sbounds[0])
-    sbounds = nu.append(sbounds,2*system_vcoords[-1]-sbounds[-1])
+    ff = 1.5
+    sbounds = nu.insert(sbounds,0,int((1+ff)*system_vcoords[0]-ff*sbounds[0]))
+    sbounds = nu.append(sbounds,int((1+ff)*system_vcoords[-1]-ff*sbounds[-1]))
 
     globalpat = nu.zeros(img.shape,nu.float)
     
@@ -233,9 +234,9 @@ def processPage(img,vocabulary,pool,outname):
 
 
 if __name__ == '__main__':
-    #pool = Pool()
-    pool = FakePool()
-    vocabularyDir = './vocabularies/dme-4096'
+    pool = Pool()
+    #pool = FakePool()
+    vocabularyDir = './vocabularies/dme-2048'
     vocabulary = makeVocabulary(vocabularyDir)
     imgfile = sys.argv[1]
     img = getImageData(imgfile)
