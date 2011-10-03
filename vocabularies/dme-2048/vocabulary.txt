@@ -1,4 +1,4 @@
 # samples taken from widthx2048 8-bit greyscale png
 bar .8 bar.png
-p .93 p-regular1.png
-f .93 f-regular1.png .97 f-italic.png
+p 10 p-regular1.png
+f 8 f-regular1.png 5 f-italic.png

@@ -1,15 +1,29 @@
 #!/usr/bin/env python
 
-import sys,os
+import sys,os,resource
 import numpy as nu
-from scipy import signal,cluster
+from scipy import signal,cluster,stats
 from numpy.fft import fft2, ifft2
-from multiprocessing import Pool
-
+from multiprocessing import Pool,Lock
+import gc
 import shared
-from utilities import argpartition, FakePool
+
+from utilities import argpartition, FakePool,partition
 from imageUtil import getImageData, writeImageData, makeMask, normalize
 from scoreVocabulary import makeVocabulary
+
+class DataManager(object):
+    def __init__(self):
+        self.objects = {}
+    def setObject(self,name,o):
+        self.objects[name] = o
+    def delObject(self,name):
+        del self.objects[name]
+        gc.collect()
+    def getObject(self,name):
+        return self.objects[name]
+
+dm = DataManager()
 
 def convolve(image1, image2, MinPad=True, pad=True):
     """
@@ -44,21 +58,27 @@ def convolve(image1, image2, MinPad=True, pad=True):
     #fftimage = FFt(image1,s=(r,c)) * FFt(image2,s=(r,c))
     fftimage = fft2(image1, s=(r,c))*fft2(image2[::-1,::-1],s=(r,c))
 
+    #gc.collect()
     if pad:
         return (ifft2(fftimage))[:rOrig,:cOrig].real
     else:
         return (ifft2(fftimage)).real
 
-def getCoords(patfile,thr=.9,returnImage=False,returnCoords=True,convp1=True,convp2=True):
-    pat = getImageData(patfile)-.5
-    #pat = preprocessPattern(pat -.5,os.path.basename(patfile))
-    pat = pat*makeMask(pat)
-    r = convolve(shared.img,pat,convp1,convp2)
-    N,M = img.shape
+
+def convolvePattern(patImg,pageImg):
+    r = convolve(pageImg,patImg,True,True)
+    N,M = pageImg.shape
     K,L = r.shape
     w = (K-N)/2
     h = (L-M)/2
-    r = r[w:w+N,h:h+M]
+    return r[w:w+N,h:h+M]
+
+def convolveOnShared(patImg,name):
+    global dm
+    return convolvePattern(patImg,dm.getObject(name))
+
+def getCoords(patImg,thr=.9,returnImage=False,returnCoords=True):
+    r = convolveOnShared(patImg,'img')
     imax = nu.max(r)
     imin = nu.min(r)
     r = (r-imin)/(imax-imin)
@@ -75,7 +95,6 @@ def getCoords(patfile,thr=.9,returnImage=False,returnCoords=True,convp1=True,con
     else:
         del r
         return None
-
 
 def smooth(x,k):
     return nu.convolve(x,signal.hanning(k),'same')
@@ -149,6 +168,7 @@ class Bar(object):
         self.right = right
         self.top = top
         self.bottom = bottom
+        self.annotations = []
     def __str__(self):
         return 'Bar:\n\tleft: {0}\n\tright: {1}\n\ttop: {2}\n\tbottom: {3}'.format(self.left,
                                                                                    self.right,
@@ -156,6 +176,12 @@ class Bar(object):
                                                                                    self.bottom)
     def getSubImage(self,img):
         return img[self.top:self.bottom,self.left:self.right]
+
+    def addAnnotation(self,label,coordinates):
+        self.annotations.append((label,coordinates))
+
+    def getShape(self):
+        return (self.bottom-self.top,self.right-self.left)
 
     def drawOnImage(self,img):
         img[self.top,self.left:self.right] = 1
@@ -165,17 +191,24 @@ class Bar(object):
         return img
 
 def getBarBBs(barItem):
-    barImage = nu.zeros(shared.img.shape)
+    global dm
     barResults = []
+    dm.setObject('pool',Pool())
     for i,barPatternFile in enumerate(barItem.getFiles()):
-        barResults.append(shared.pool.apply_async(getCoords,(barPatternFile, barItem.getThreshold(i),True,False)))
-        # barImage += getCoords(img,
-        #                     barPatternFile,
-        #                     barItem.getThreshold(i),
-        #                     True,False)
+        barImg = barItem.getImage(0)
+        barResults.append(dm.getObject('pool').apply_async(getCoords,(barImg,
+                                                                      barItem.getThreshold(i),
+                                                                      True,False)))
+        gc.collect()
 
+    dm.getObject('pool').close()
+    dm.getObject('pool').join()
+    dm.delObject('pool')
+    gc.collect()
+    barImage = nu.zeros(dm.getObject('img').shape)
     for r in barResults:
         barImage += r.get()
+    
     print('finding systems...')
     barImage = barImage/len(barItem.getFiles())
     system_vcoords = findSystems(barImage)
@@ -218,51 +251,87 @@ def getBarBBs(barItem):
             bars.append(Bar(system_vcenter,left,right,top,bottom))
     return bars
 
+def findPatternInBar(patImage,barIdx):
+    return convolvePattern(patImage,dm.getObject('bars')[barIdx].getSubImage(dm.getObject('img')))
+
+def findPattern(vocItem):
+    global dm
+    results = {}
+    for i in range(len(dm.getObject('bars'))):
+        for j in range(len(vocItem.getFiles())):
+            results[(vocItem.label,j,i)] = dm.getObject('pool').apply_async(findPatternInBar,(vocItem.getImage(j),i))
+    return results
+    
 def processPage(vocabulary,outname):
+    global dm
     barItem = vocabulary.getBar()
     if barItem is None:
         return False
+    dm.setObject('bars',getBarBBs(barItem))
 
-    bars = getBarBBs(barItem)
+    vocItems = [vocabulary.getItem(label) for label in vocabulary.getLabels()]
+    dm.setObject('pool',Pool())
+    patResults = {}
+    for vocItem in vocItems:
+        # accumulate worker result objects
+        patResults = dict(patResults.items()+findPattern(vocItem).items())
 
-    
-    shared.pool.close()
-    shared.pool.join()
-    voclabels = []#vocabulary.getLabels()
-    for bar in bars:
-        print(bar)
-        bar.drawOnImage(shared.newImg)
-        for label in voclabels:
-            print(label)
-            vi = vocabulary.getItem(label)
-            patternFile = vi.getFiles()[0]
-            thr = vi.getThresholds()[0]
-            pimg,pcoord = getCoords(bar.getSubImage(img),patternFile,thr,True,True,False,False)
-            print(clusterCoords(pcoord))
-            nu.savetxt('/tmp/o.txt',pimg)
-            sys.exit()
-
-    normImg = normalize(shared.img)
-    im_r = nu.minimum(normImg,1-.5*shared.newImg)
+    dm.getObject('pool').close()
+    dm.getObject('pool').join()
+    dm.delObject('pool')
+    keysPerPattern = partition(lambda x: x[:2], patResults.keys())
+    for dum,keys in keysPerPattern.items():
+        print(dum)
+        acc = []
+        accvec = nu.array([])
+        keys.sort(key=lambda x: x[2])
+        for k in keys:
+            acc.append(patResults[k].get())
+            accvec = nu.append(accvec,acc[-1])
+        totalPixelSize = len(accvec)
+        nu.savetxt('/tmp/v_{0}_{1}.txt'.format(dum[0],dum[1]),accvec)
+        #del accvec
+        expectedNrOfInstances = vocabulary.getItem(dum[0]).getThreshold(dum[1])
+        percentile = 1.0-expectedNrOfInstances/totalPixelSize
+        thr = stats.mstats.mquantiles(accvec,[percentile])[0]
+        print(thr)
+        for i,img in enumerate(acc):
+            idx = img < thr
+            #img[idx] = .2*img[idx]
+            img[idx] = 0
+            #nu.savetxt('/tmp/bp_{0}_{1}_{2}.txt'.format(dum[0],dum[1],i),img[::-1,:])
+            coords = clusterCoords(nu.column_stack(nu.nonzero(img)))
+            if coords != None:
+                dm.getObject('bars')[i].addAnnotation(dum[0],coords)
+    #for k,v in patResults.items():
+    #    # wait for result objects to return
+    #    nu.savetxt('/tmp/bp_{0}_{1}_{2}.txt'.format(k[0],k[1],k[2]),v.get()[::-1,:])
+    newImg = nu.zeros(dm.getObject('img').shape,nu.float)
+    for i,bar in enumerate(dm.getObject('bars')):
+        print('bar {0}: {1}'.format(i,bar.annotations))
+        bar.drawOnImage(newImg)
+    normImg = normalize(dm.getObject('img'))
+    im_r = nu.minimum(normImg,1-.5*newImg)
     im_r = nu.array((1-im_r)*255,nu.uint8)
-    im_g = nu.maximum(normImg,shared.newImg)
+    im_g = nu.maximum(normImg,newImg)
     im_g = nu.array((1-im_g)*255,nu.uint8)
     im_b = im_g
-    writeImageData(outname,shared.img.shape,im_r,im_g,im_b)
-
+    writeImageData(outname,newImg.shape,im_r,im_g,im_b)
+        
     sys.exit()
 
+    for i,pr in enumerate(patResults):
+        print(vocItems[i].label)
+        for baridx,p in enumerate(pr):
+            nu.savetxt('/tmp/bp_{0}_{1}.txt'.format(vocItems[i].label,baridx),p.get()[::-1,:])
+        #pats.append([p.get() for p in pr])
 
-    vocresults = []
-    voclabels = vocabulary.getLabels()
-    for label in voclabels:
-        vi = vocabulary.getItem(label)
-        patternFile = vi.getFiles()[0]
-        thr = vi.getThresholds()[0]
-        vocresults.append(pool.apply_async(getCoords,(img,patternFile,thr,False,True)))
+    #pimg,pcoord = getCoords(bar.getSubImage(img),patternFile,thr,True,True,False,False)
+    #patresults.append(shared.pool.apply_async(getCoords,(bar,patternFile,thr,True,True)))
+    #print(clusterCoords(pcoord))
+    #nu.savetxt('/tmp/o.txt',pimg)
+    #sys.exit()
 
-    pool.close()
-    pool.join()
 
     assert len(system_vcoords) > 1
 
@@ -318,14 +387,11 @@ def processPage(vocabulary,outname):
     writeImageData(outname,img.shape,im_r,im_g,im_b)
                          
 if __name__ == '__main__':
-    vocabularyDir = './vocabularies/dme-4096'
+    #vocabularyDir = './vocabularies/dme-4096'
+    vocabularyDir = './vocabularies/dme-2048'
     vocabulary = makeVocabulary(vocabularyDir)
     imgfile = sys.argv[1]
-    img = getImageData(imgfile)
-    img = img -.5
-    shared.img = img
-    shared.newImg = nu.zeros(shared.img.shape,nu.float)
-    shared.pool = Pool()
-    #shared.pool = FakePool()
+    print('main',os.getpid())
+    dm.setObject('img',getImageData(imgfile) -.5)
     outname= os.path.join('/tmp/',os.path.basename(imgfile))
     processPage(vocabulary,outname)

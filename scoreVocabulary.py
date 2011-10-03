@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 import os
-from imageUtil import getImageData,normalize
+from imageUtil import getImageData,normalize,makeMask
+from multiprocessing import Lock
 
 class VocabularyItem(object):
     def __init__(self,l,dirname):
@@ -9,8 +10,8 @@ class VocabularyItem(object):
         self.label = parts[0]
         self.thresholds = [float(x) for x in parts[1::2]]
         self.files = [os.path.join(dirname,x) for x in parts[2::2]]
-        self.images = [normalize(getImageData(f)) for f in self.files]
-
+        self.images = [None for f in self.files]
+        #self.loadLock = Lock()
     def getThresholds(self):
         return self.thresholds
 
@@ -27,6 +28,11 @@ class VocabularyItem(object):
 
     def getImage(self,i=0):
         assert len(self.images)>i
+        #self.loadLock.acquire()
+        if self.images[i] == None:
+            self.images[i] = normalize(getImageData(self.files[i]))-.5
+            self.images[i] = makeMask(self.images[i])*self.images[i]
+        #self.loadLock.release()
         return self.images[i]
 
     def __str__(self):
