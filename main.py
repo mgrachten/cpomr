@@ -252,7 +252,16 @@ def getBarBBs(barItem):
     return bars
 
 def findPatternInBar(patImage,barIdx):
-    return convolvePattern(patImage,dm.getObject('bars')[barIdx].getSubImage(dm.getObject('img')))
+    o = nu.zeros((5,5))
+    o[1:4,1:4] = .25
+    o[2,2] = .5
+    o[0,:] = -.5
+    o[4,:] = -.5
+    o[:,0] = -.5
+    o[:,4] = -.5
+    x0 = convolvePattern(patImage,dm.getObject('bars')[barIdx].getSubImage(dm.getObject('img')))
+    x1 = convolvePattern(o,normalize(x0)-.5)
+    return x1
 
 def findPattern(vocItem):
     global dm
@@ -289,20 +298,38 @@ def processPage(vocabulary,outname):
             acc.append(patResults[k].get())
             accvec = nu.append(accvec,acc[-1])
         totalPixelSize = len(accvec)
+        #accvec = 1-normalize(accvec)
         nu.savetxt('/tmp/v_{0}_{1}.txt'.format(dum[0],dum[1]),accvec)
-        #del accvec
-        expectedNrOfInstances = vocabulary.getItem(dum[0]).getThreshold(dum[1])
-        percentile = 1.0-expectedNrOfInstances/totalPixelSize
-        thr = stats.mstats.mquantiles(accvec,[percentile])[0]
+        bins,centers = nu.histogram(accvec,50)
+        print(bins[-20:])
+        print('bin ratio',bins[-1]/float(bins[-2]))
+        #diffbins = nu.diff(bins)
+        # big peak
+        #bigpeakidx = nu.argmin(diffbins)
+        #mx = nu.max(accvec)
+        #print('max/bigpeak',mx/centers[bigpeakidx])
+        #print('max/median',mx/nu.median(accvec))
+        #print('criterion',nu.log(nu.median(accvec)))
+        # discard everything up til big peak
+        #diffbins[:bigpeakidx] = 0
+        # discard everything dropping off
+        #diffbins[bigpeakidx:][diffbins[bigpeakidx:] < 0] = 0
+        #candidates = nu.nonzero(diffbins)[0]
+        
+        if False: #len(candidates) > 0:
+            thr = centers[candidates[-1]]
+        else:
+            thr = nu.inf
+        del accvec
         print(thr)
         for i,img in enumerate(acc):
-            idx = img < thr
+            #idx = img < thr
             #img[idx] = .2*img[idx]
-            img[idx] = 0
-            #nu.savetxt('/tmp/bp_{0}_{1}_{2}.txt'.format(dum[0],dum[1],i),img[::-1,:])
-            coords = clusterCoords(nu.column_stack(nu.nonzero(img)))
-            if coords != None:
-                dm.getObject('bars')[i].addAnnotation(dum[0],coords)
+            #img[idx] = 0
+            nu.savetxt('/tmp/bp_{0}_{1}_{2}.txt'.format(dum[0],dum[1],i),img[::-1,:])
+            #coords = clusterCoords(nu.column_stack(nu.nonzero(img)))
+            #if coords != None:
+            #    dm.getObject('bars')[i].addAnnotation(dum[0],coords)
     #for k,v in patResults.items():
     #    # wait for result objects to return
     #    nu.savetxt('/tmp/bp_{0}_{1}_{2}.txt'.format(k[0],k[1],k[2]),v.get()[::-1,:])
