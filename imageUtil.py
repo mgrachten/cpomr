@@ -3,14 +3,16 @@
 import sys,os
 from PIL import Image
 import numpy as nu
-
 from scipy import signal
 
 def normalize(x):
     xmin = nu.min(x)
     xmax = nu.max(x)
-    assert xmin < xmax
-    return (x-xmin)/(xmax-xmin)
+    #assert xmin < xmax
+    if xmin < xmax:
+        return (x-xmin)/(xmax-xmin)
+    else: 
+        return nu.ones(x.shape,nu.float)
 
 def makeMask(img):
     mask = nu.zeros(img.shape,nu.float)
@@ -21,10 +23,10 @@ def makeMask(img):
             o1 = max(0,i-K)
             o2 = max(0,j-K)
             subimage = img[o1:min(i+K,N),o2:min(j+K,M)]
-            k = nu.argmax(subimage)
+            k = float(nu.argmax(subimage))
             v = k/subimage.shape[1]
             w = k%subimage.shape[1]
-            d = 1.0/(1+((o1+v-i)**2+(o2+w-j)**2)**.5)
+            #d = 1.0/(1+((o1+v-i)**2+(o2+w-j)**2)**.5)
             mask[i,j] = subimage[v,w]
     return normalize(mask)
 
@@ -33,10 +35,8 @@ def getImageData(filename):
     #data = nu.array(list(imageFh.getdata()))
     s = list(imageFh.size)
     s.reverse()
-    data = nu.array(imageFh.getdata()).reshape(tuple(s))
-    img_min = nu.min(data)
-    img_max = nu.max(data)
-    return 1-(nu.array(data,nu.float)-img_min)/(img_max-img_min)
+    data = nu.array(imageFh.getdata(),nu.uint8).reshape(tuple(s))
+    return data
 
 def writeImageDataOld(filename,data,color=(1,1,1),alphaChannel=None):
     size = tuple(reversed(data.shape))
