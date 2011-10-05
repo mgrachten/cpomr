@@ -6,11 +6,10 @@ from scipy import signal,cluster,stats
 from numpy.fft import fft2, ifft2
 from multiprocessing import Pool,Lock
 import multiprocessing.sharedctypes as mps
-import gc
-import shared
+
 
 from utilities import argpartition, FakePool,partition
-from imageUtil import getImageData, writeImageData, makeMask, normalize,jitterImageEdges
+from imageUtil import getImageData, writeImageData, makeMask, normalize, jitterImageEdges
 from scoreVocabulary import makeVocabulary
 
 class DataManager(object):
@@ -29,7 +28,6 @@ class DataManager(object):
         self.shapes[name] = img.shape
         self.dtypes[name] = img.dtype
         self.objects[name] = mps.RawArray(self.typemap[img.dtype.type],img.reshape(-1))
-        #dm.setArray('img',mps.RawArray(mps.ctypes.c_int8,img.reshape(-1)),img.shape,img.dtype)
         return self.objects[name]
     def getArray(self,name):
         return nu.ndarray(self.shapes[name],self.dtypes[name],self.objects[name])
@@ -66,7 +64,6 @@ def convolve(image1, image2, MinPad=True, pad=True):
 
     #numpy fft has the padding built in, which can save us some steps
     #here. The thing is the s(hape) parameter:
-    #fftimage = FFt(image1,s=(r,c)) * FFt(image2,s=(r,c))
     fftimage = fft2(image1, s=(r,c))*fft2(image2[::-1,::-1],s=(r,c))
     if pad:
         return (ifft2(fftimage))[:rOrig,:cOrig].real
@@ -205,33 +202,22 @@ class Bar(object):
 def getBarBBs(barItem):
     global dm
     barResults = []
-    gc.collect()
     print('preparing bar detection ...'),
     dm.setObject('pool',Pool())
     for i,barPatternFile in enumerate(barItem.getFiles()):
         barImg = barItem.getImage(0)
-        #nu.savetxt('/tmp/bar{0}.txt'.format(i),barImg[::-1,:])
         barResults.append(dm.getObject('pool').apply_async(getCoords,(barImg,
                                                                       barItem.getThreshold(i),
                                                                       True,False)))
-        #gc.collect()
     dm.getObject('pool').close()
     dm.getObject('pool').join()
     dm.delObject('pool')
-    gc.collect()
-    #barImage = nu.zeros(dm.getObject('img').shape,nu.bool)
     barResults[0] = barResults[0].get()
     for r in barResults[1:]:
-        #barImage = nu.logical_or(barImage,r.get())
         barResults[0] = nu.logical_or(barResults[0],r.get())
-        gc.collect()
-    #barImage = barImage/len(barItem.getFiles())
-    #nu.savetxt('/tmp/page.txt',dm.getObject('img')[::-1,:])
-    #nu.savetxt('/tmp/bi.txt',barImage[::-1,:])
     print('Done')
     print('finding systems...'),
     barResults = barResults[0]
-    gc.collect()
     system_vcoords = findSystems(barResults)
     assert len(system_vcoords) > 0
     system_vcoords.sort()
@@ -239,7 +225,6 @@ def getBarBBs(barItem):
     print('finding bars...'),
     bar_hcoords = findBars(system_vcoords,barResults)
     del barResults
-    gc.collect()
 
     validSystemIdx = []
     for i,v in enumerate(system_vcoords):
@@ -307,8 +292,6 @@ def calibrateVocItem(vocItem):
             v.append(dm.getObject('pool').map_async(convolvePatternFunc,[(vocItem.getImage(j),emptyBar,nu.max),
                                                                    (vocItem.getImage(j),selfimg,nu.max)]))
         results.append(v)
-        #v = dm.getObject('pool').map(convolvePatternFunc,[(vocItem.getImage(j),emptyBar,nu.max),
-        #                                                  (vocItem.getImage(j),selfimg,nu.max)])
     for j in range(len(vocItem.getFiles())):
         v = nu.mean(nu.array([x.get() for x in results[j]]),0)
         vocItem.setCalibration(j,v[0],v[1])
@@ -352,6 +335,7 @@ def processPage(vocabulary,outname):
             barleft = dm.getObject('bars')[k[2]].getLeft()
             bartop = dm.getObject('bars')[k[2]].getTop()
             thr = 1
+            # OOOOPS: 
             if dum == ('f',0):
                 thr = 1.2
             mb = vocItem.normalize(labelim,m,True,thr)
@@ -392,8 +376,12 @@ def processPage(vocabulary,outname):
 if __name__ == '__main__':
     #vocabularyDir = './vocabularies/dme-4096'
     vocabularyDir = './vocabularies/dme-2048'
+    print('loading vocabulary...'),
     vocabulary = makeVocabulary(vocabularyDir)
+    print('Done')
     imgfile = sys.argv[1]
+    print('reading score page {0}...'.format(imgfile)),
     dm.setArray('img',(255-nu.array(getImageData(imgfile),nu.int8)-128))
+    print('Done')
     outname= os.path.join('/tmp/',os.path.basename(imgfile))
     processPage(vocabulary,outname)
