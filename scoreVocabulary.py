@@ -5,14 +5,40 @@ from imageUtil import getImageData,normalize,makeMask
 from multiprocessing import Lock
 import numpy as nu
 
+def colorString2Tuple(s):
+    assert len(s) == 7
+    return (int(s[1:3],16),int(s[3:5],16),int(s[5:7],16))
+
 class VocabularyItem(object):
     def __init__(self,l,dirname):
         parts = l.strip().split()
         self.label = parts[0]
-        self.thresholds = [float(x) for x in parts[1::2]]
-        self.files = [os.path.join(dirname,x) for x in parts[2::2]]
+        self.color = colorString2Tuple(parts[1])
+        self.thresholds = [float(x) for x in parts[2::2]]
+        self.files = [os.path.join(dirname,x) for x in parts[3::2]]
         self.images = [None for f in self.files]
+        self.minVals = [None for f in self.files]
+        self.maxVals = [None for f in self.files]
         #self.loadLock = Lock()
+
+    def getColor(self):
+        return self.color
+    def setCalibration(self,i,v0,v1):
+        self.minVals[i] = v0
+        self.maxVals[i] = v1
+
+    def normalize(self,i,array,binary=False,threshold=1):
+        """Normalize a data array according to the calibration values of the i-th image
+        A value > 1 should imply a match
+        """
+        assert self.minVals[i] != None
+        assert self.minVals[i] != None
+        r = (array-self.minVals[i])/(self.maxVals[i]-self.minVals[i])
+        if binary:
+            return r >= threshold
+        else:
+            return r
+
     def getThresholds(self):
         return self.thresholds
 
@@ -69,7 +95,7 @@ def makeVocabulary(vocabularyDir):
     vocabulary = ScoreVocabulary()
     with open(vocfile,'r') as f:
         for l in f.readlines():
-            if l[0] is not '#':
+            if l[0] is not '#' and len(l.strip()) > 0:
                 vocabulary.addItem(VocabularyItem(l,vocabularyDir))
     return vocabulary
 

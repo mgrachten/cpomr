@@ -6,7 +6,7 @@ do
     mkdir -p $dir
     pdfimages $pdf "$dir/$dir-page"
     pushd $dir
-    ls *.ppm | parallel convert {} -depth 8 -resize 4096x4096 {.}.png
+    ls *.ppm | parallel convert {} -depth 8 -resize 2048x2048 {.}.png
     rm *.ppm
     popd
 done

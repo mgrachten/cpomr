@@ -6,13 +6,36 @@ import numpy as nu
 from scipy import signal
 
 def normalize(x):
-    xmin = nu.min(x)
-    xmax = nu.max(x)
+    xmin = float(nu.min(x))
+    xmax = float(nu.max(x))
     #assert xmin < xmax
     if xmin < xmax:
-        return (x-xmin)/(xmax-xmin)
+        return (nu.array(x,nu.float32)-xmin)/(xmax-xmin)
     else: 
-        return nu.ones(x.shape,nu.float)
+        return nu.ones(x.shape,nu.float32)
+
+def makeDiffImage(img):
+    dimg0 = nu.diff(img,axis=0)
+    dimg0 = nu.vstack((dimg0[0,:].reshape(1,-1),(dimg0[1:,:]+dimg0[:-1,:])/2.0,dimg0[-1,:].reshape(1,-1)))
+    dimg1 = nu.diff(img,axis=1)
+    dimg1 = nu.hstack((dimg1[:,0].reshape(-1,1),(dimg1[:,1:]+dimg1[:,:-1])/2.0,dimg1[:,-1].reshape(-1,1)))
+    return normalize(dimg0+dimg1)
+
+def jitterImageEdges(img,var):
+    irange = float(nu.max(img))-float(nu.min(img))
+    dimg = makeDiffImage(img)
+    jimg = img+dimg*nu.random.normal(0,var*irange,img.shape)
+    if nu.issubdtype(img.dtype,nu.int):
+        r = 2**(img.dtype.itemsize*8-1)
+        nu.clip(jimg,a_min=-r,a_max=r-1,out=jimg)
+    elif nu.issubdtype(img.dtype,nu.float):
+        pass
+    elif nu.issubdtype(img.dtype,nu.complex):
+        pass
+    else:
+        ## assume uint of some size
+        nu.clip(jimg,a_min=0,a_max=2**(img.dtype.itemsize*8)-1,out=jimg)
+    return nu.array(jimg,img.dtype)
 
 def makeMask(img):
     mask = nu.zeros(img.shape,nu.float)
@@ -61,7 +84,6 @@ def writeImageDataOld(filename,data,color=(1,1,1),alphaChannel=None):
 def writeImageData(filename,size,im_r=None,im_g=None,im_b=None,alphaChannel=None):
     #size = tuple(reversed(size))
     #img = Image.new('RGBA',size)
-    print(nu.min(im_r),nu.max(im_r))
     if im_r is None:
         im_r = nu.zeros(size,nu.uint8)*255
     else:

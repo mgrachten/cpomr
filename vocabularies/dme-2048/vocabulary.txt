@@ -1,4 +1,5 @@
 # samples taken from widthx2048 8-bit greyscale png
-bar .8 bar.png
-p 10 p-regular1.png
-f 8 f-regular1.png 5 f-italic.png
+bar #000000 .82 bar.png
+p #ff0000 .25 p-regular1.png
+f #00ff00 .01 f-regular1.png .5 f-italic.png
+n #0000ff .6 head-black-between.png .6 head-black-on.png .6 head-white-between.png .6 head-white-on.png .6 head-white-above.png
