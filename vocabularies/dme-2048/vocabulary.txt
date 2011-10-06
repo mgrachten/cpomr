@@ -1,4 +1,8 @@
 # samples taken from widthx2048 8-bit greyscale png
+# FORMAT:
+# patternName annotationColor [tolerance patternfile]+
+# tolerance is interpreted as a threshold (so higher is stricter) for bar
+# and as tolerance (lower is stricter) for other patterns
 bar #000000 .82 bar.png
 p #ff0000 .25 p-regular1.png
 f #00ff00 .01 f-regular1.png .5 f-italic.png
