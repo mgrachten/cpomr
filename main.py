@@ -64,6 +64,8 @@ def convolve(image1, image2, MinPad=True, pad=True):
 
     #numpy fft has the padding built in, which can save us some steps
     #here. The thing is the s(hape) parameter:
+    #f1 = fft2(image1, s=(r,c))
+    #fftimage = f1*fft2(image2[::-1,::-1],s=(r,c))
     fftimage = fft2(image1, s=(r,c))*fft2(image2[::-1,::-1],s=(r,c))
     if pad:
         return (ifft2(fftimage))[:rOrig,:cOrig].real
@@ -208,7 +210,11 @@ class Bar(object):
         self.right = right
         self.top = top
         self.bottom = bottom
-        self.annotations = []
+        self.annotations = {}
+
+    def addAnnotation(self,label,coordinates):
+        self.annotations[label] = self.annotations.get(label,[])+[coordinates]
+
     def __str__(self):
         return 'Bar:\n\tleft: {0}\n\tright: {1}\n\ttop: {2}\n\tbottom: {3}'.format(self.left,
                                                                                    self.right,
@@ -217,8 +223,8 @@ class Bar(object):
     def getSubImage(self,img):
         return img[self.top:self.bottom,self.left:self.right]
 
-    def addAnnotation(self,label,coordinates):
-        self.annotations.append((label,coordinates))
+    #def addAnnotation(self,label,coordinates):
+    #    self.annotations.append((label,coordinates))
 
     def getShape(self):
         return (self.bottom-self.top,self.right-self.left)
@@ -330,19 +336,29 @@ def processPage(vocabulary,outname):
 
         vocItem = vocabulary.getItem(label)
         for k in keys:
+            bar = dm.getObject('bars')[k[2]]
             m = patResults[k].get()
-            barleft = dm.getObject('bars')[k[2]].getLeft()
-            bartop = dm.getObject('bars')[k[2]].getTop()
+            barleft = bar.getLeft()
+            bartop = bar.getTop()
             thr = 1
             # OOOOPS: 
-            if dum == ('f',0):
-                thr = 1.2
+            #if dum == ('f',0):
+            #    thr = 1.2
             mb = vocItem.normalize(labelim,m,True,thr)
             cc = clusterCoords(nu.column_stack(nu.nonzero(mb)))
             if cc != None:
                 cc += (bartop,barleft)
                 coords[dum] = coords[dum]+[tuple(x) for x in cc]
+                for x in cc:
+                    bar.addAnnotation(label,tuple(x))
         print('Done')
+
+    bars = dm.getObject('bars')
+    bars = [bar for bar in bars if len(bar.annotations) > 0]
+    for i,b in enumerate(bars):
+        print('\nbar',i)
+        print(b.annotations)
+    dm.setObject('bars',bars)
 
     print('drawing results to image...'),
     # draw results to image
