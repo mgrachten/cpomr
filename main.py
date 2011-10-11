@@ -9,7 +9,7 @@ import multiprocessing.sharedctypes as mps
 
 
 from utilities import argpartition, FakePool,partition
-from imageUtil import getImageData, writeImageData, makeMask, normalize, jitterImageEdges
+from imageUtil import getImageData, writeImageData, makeMask, normalize, jitterImageEdges,getPattern
 from scoreVocabulary import makeVocabulary
 
 class DataManager(object):
@@ -100,6 +100,41 @@ def getCoords(patImg,thr=.9,returnImage=False,returnCoords=True):
         return r
     else:
         return None
+
+def findPatternInBar(patImage,barIdx):
+    return convolvePattern(patImage,dm.getObject('bars')[barIdx].getSubImage(dm.getArray('img')))
+
+def findPattern(vocItem):
+    global dm
+    # jitter std as a proportion of img range
+    jitterStd = .6
+    results = {}
+    for i in range(len(dm.getObject('bars'))):
+        for j in range(len(vocItem.getFiles())):
+            results[(vocItem.label,j,i)] = dm.getObject('pool').apply_async(findPatternInBar,(vocItem.getImage(j),i))
+    emptyBar = nu.zeros(dm.getObject('bars')[0].getShape(),nu.int8)-128
+    return results
+
+def convolvePatternFunc((img,pat,fun)):
+    return fun(convolvePattern(img,pat))
+
+def calibrateVocItem(vocItem):
+    global dm
+    # jitter std as a proportion of img range
+    emptyBar = nu.zeros(dm.getObject('bars')[0].getShape(),nu.int8)-128
+    s = 20
+    results = []
+    for j in range(len(vocItem.getFiles())):
+        jitterStd = vocItem.getThreshold(j)
+        selfimg = jitterImageEdges(vocItem.getImage(j),jitterStd)
+        v = []
+        for k in range(s):
+            v.append(dm.getObject('pool').map_async(convolvePatternFunc,[(vocItem.getImage(j),emptyBar,nu.max),
+                                                                   (vocItem.getImage(j),selfimg,nu.max)]))
+        results.append(v)
+    for j in range(len(vocItem.getFiles())):
+        v = nu.mean(nu.array([x.get() for x in results[j]]),0)
+        vocItem.setCalibration(j,v[0],v[1])
 
 def smooth(x,k):
     return nu.convolve(x,signal.hanning(k),'same')
@@ -254,50 +289,14 @@ def getBarBBs(barItem):
         # filter out unlikily short bars
         baridx = nu.arange(len(barwidths))[barwidths >= minWidth]
         for j in baridx:
+            hextra = 0
             vextra = 5
-            top,bottom = int(nu.round(sbounds[i])-vextra),int(nu.round(sbounds[i+1])+vextra)
-            left,right = int(nu.round(b_hcs[j])),int(nu.round(b_hcs[j+1]))
+            top,bottom = int(nu.round(sbounds[i]-vextra)),int(nu.round(sbounds[i+1]+vextra))
+            left,right = int(nu.round(b_hcs[j]-hextra)),int(nu.round(b_hcs[j+1]+hextra))
             bars.append(Bar(system_vcenter,left,right,top,bottom))
     print('Done')
     return bars
 
-def findPatternInBar(patImage,barIdx):
-    return convolvePattern(patImage,dm.getObject('bars')[barIdx].getSubImage(dm.getArray('img')))
-
-def findPattern(vocItem):
-    global dm
-    # jitter std as a proportion of img range
-    jitterStd = .6
-    results = {}
-    for i in range(len(dm.getObject('bars'))):
-        for j in range(len(vocItem.getFiles())):
-            results[(vocItem.label,j,i)] = dm.getObject('pool').apply_async(findPatternInBar,(vocItem.getImage(j),i))
-    emptyBar = nu.zeros(dm.getObject('bars')[0].getShape(),nu.int8)-128
-    return results
-
-def convolvePatternFunc((img,pat,fun)):
-    return fun(convolvePattern(img,pat))
-
-def calibrateVocItem(vocItem):
-    global dm
-    # jitter std as a proportion of img range
-    emptyBar = nu.zeros(dm.getObject('bars')[0].getShape(),nu.int8)-128
-    s = 20
-    results = []
-    for j in range(len(vocItem.getFiles())):
-        jitterStd = vocItem.getThreshold(j)
-        selfimg = jitterImageEdges(vocItem.getImage(j),jitterStd)
-        v = []
-        for k in range(s):
-            v.append(dm.getObject('pool').map_async(convolvePatternFunc,[(vocItem.getImage(j),emptyBar,nu.max),
-                                                                   (vocItem.getImage(j),selfimg,nu.max)]))
-        results.append(v)
-    for j in range(len(vocItem.getFiles())):
-        v = nu.mean(nu.array([x.get() for x in results[j]]),0)
-        vocItem.setCalibration(j,v[0],v[1])
-
-
- 
 def processPage(vocabulary,outname):
     global dm
     barItem = vocabulary.getBar()
@@ -381,7 +380,10 @@ if __name__ == '__main__':
     print('Done')
     imgfile = sys.argv[1]
     print('reading score page {0}...'.format(imgfile)),
-    dm.setArray('img',(255-nu.array(getImageData(imgfile),nu.int8)-128))
+    #dm.setArray('img',(255-nu.array(getImageData(imgfile),nu.int8)-128))
+    img = nu.array(127-getPattern(imgfile,useMask=False,alphaAsMaskIfAvailable=False),nu.int8)
+    dm.setArray('img',img)
     print('Done')
     outname= os.path.join('/tmp/',os.path.basename(imgfile))
     processPage(vocabulary,outname)
+

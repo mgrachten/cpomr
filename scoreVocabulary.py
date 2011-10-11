@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import os
-from imageUtil import getImageData,normalize,makeMask
+from imageUtil import getImageData,normalize,makeMask,getPattern
 from multiprocessing import Lock
 import numpy as nu
 
@@ -58,8 +58,9 @@ class VocabularyItem(object):
         #self.loadLock.acquire()
         if self.images[i] == None:
             #self.images[i] = normalize(getImageData(self.files[i]))-.5
-            self.images[i] = 255-nu.array(getImageData(self.files[i]),nu.int8)-128
-            self.images[i] = nu.array(nu.round(makeMask(self.images[i])*self.images[i]),nu.int8)
+            #self.images[i] = 255-nu.array(getImageData(self.files[i]),nu.int8)-128
+            self.images[i] = getPattern(self.files[i],True,True)
+            #self.images[i] = nu.array(nu.round(makeMask(self.images[i])*self.images[i]),nu.int8)
         #self.loadLock.release()
         return self.images[i]
 

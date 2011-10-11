@@ -38,8 +38,9 @@ def jitterImageEdges(img,var):
     return nu.array(jimg,img.dtype)
 
 def makeMask(img):
-    mask = nu.zeros(img.shape,nu.float)
-    K = 3
+    imin,imax = nu.min(img),nu.max(img)
+    mask = nu.zeros(img.shape,nu.float)-imin
+    K = 5
     N,M = img.shape
     for i in range(N):
         for j in range(M):
@@ -47,11 +48,8 @@ def makeMask(img):
             o2 = max(0,j-K)
             subimage = img[o1:min(i+K,N),o2:min(j+K,M)]
             k = float(nu.argmax(subimage))
-            v = k/subimage.shape[1]
-            w = k%subimage.shape[1]
-            #d = 1.0/(1+((o1+v-i)**2+(o2+w-j)**2)**.5)
-            mask[i,j] = subimage[v,w]
-    return normalize(mask)
+            mask[i,j] = subimage[k/subimage.shape[1],k%subimage.shape[1]]
+    return (mask-imin)/(imax-imin)
 
 def getImageData(filename):
     imageFh = Image.open(filename)
@@ -60,6 +58,42 @@ def getImageData(filename):
     s.reverse()
     data = nu.array(imageFh.getdata(),nu.uint8).reshape(tuple(s))
     return data
+
+def avgChannels(img):
+    return nu.mean(img,axis=1)
+
+def getPattern(filename,useMask=True,alphaAsMaskIfAvailable=True):
+    imageFh = Image.open(filename)
+    #data = nu.array(list(imageFh.getdata()))
+    assert imageFh.mode.startswith('L') or imageFh.mode.startswith('RGB')
+    s = tuple(reversed(imageFh.size))
+
+    fimg = nu.array(imageFh.getdata(),nu.uint8).reshape((s[0]*s[1],-1))
+    #nch = img.shape[1]
+    nch = len(imageFh.mode)
+    hasAlpha = imageFh.mode[-1] == 'A'
+
+    # get greyscale img info, averaging RGB channels if necessary
+    if hasAlpha:
+        img = avgChannels(fimg[:,:-1])
+    else:
+        img = avgChannels(fimg)
+    nu.savetxt('/tmp/i.txt',img.reshape(s))
+    if useMask and not (alphaAsMaskIfAvailable and hasAlpha):
+        # center around zero and 
+        mask = makeMask(255-img.reshape(s)).reshape(img.shape)
+    elif hasAlpha and alphaAsMaskIfAvailable:
+        # CHECK IF TRANSPARENCY IS 0 OR 255!!!
+        mask = nu.array(fimg[:,-1],nu.float)/255
+        trivialAlpha = nu.max(mask)<=nu.min(mask)
+        if trivialAlpha:
+            sys.stderr.write('Warning: pattern {0} has a trivial\nalpha-channel. Using standard masking procedure instead.\n'.format(filename))
+            mask = makeMask(255-img.reshape(s)).reshape(img.shape)
+
+    if useMask:
+        return nu.array((127-img)*mask,nu.int8).reshape(s)
+    else:
+        return nu.array(img,nu.uint8).reshape(s)
 
 def writeImageDataOld(filename,data,color=(1,1,1),alphaChannel=None):
     size = tuple(reversed(data.shape))
