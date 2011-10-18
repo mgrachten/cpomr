@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import os
-from imageUtil import getImageData,normalize,makeMask,getPattern
+from imageUtil import getImageData,normalize,makeMask,getPattern,getImageAndMask
 from multiprocessing import Lock
 import numpy as nu
 
@@ -17,6 +17,8 @@ class VocabularyItem(object):
         self.thresholds = [float(x) for x in parts[2::2]]
         self.files = [os.path.join(dirname,x) for x in parts[3::2]]
         self.images = [None for f in self.files]
+        self.pureimages = [None for f in self.files]
+        self.masks = [None for f in self.files]
         self.minVals = [None for f in self.files]
         self.maxVals = [None for f in self.files]
         #self.loadLock = Lock()
@@ -32,7 +34,7 @@ class VocabularyItem(object):
         A value > 1 should imply a match
         """
         assert self.minVals[i] != None
-        assert self.minVals[i] != None
+        assert self.maxVals[i] != None
         r = (array-self.minVals[i])/(self.maxVals[i]-self.minVals[i])
         if binary:
             return r >= threshold
@@ -60,6 +62,7 @@ class VocabularyItem(object):
             #self.images[i] = normalize(getImageData(self.files[i]))-.5
             #self.images[i] = 255-nu.array(getImageData(self.files[i]),nu.int8)-128
             self.images[i] = getPattern(self.files[i],True,True)
+            self.pureimages[i],self.masks[i] = getImageAndMask(self.files[i],True,True)
             #self.images[i] = nu.array(nu.round(makeMask(self.images[i])*self.images[i]),nu.int8)
         #self.loadLock.release()
         return self.images[i]

@@ -2,7 +2,7 @@
 
 import sys,os,resource
 import numpy as nu
-from scipy import signal,cluster,stats
+from scipy import signal,cluster,stats,mgrid
 from numpy.fft import fft2, ifft2
 from multiprocessing import Pool,Lock
 import multiprocessing.sharedctypes as mps
@@ -11,6 +11,19 @@ import multiprocessing.sharedctypes as mps
 from utilities import argpartition, FakePool,partition
 from imageUtil import getImageData, writeImageData, makeMask, normalize, jitterImageEdges,getPattern
 from scoreVocabulary import makeVocabulary
+
+def gauss_kern(size, sizey=None,w=.3):
+    """ Returns a normalized 2D gauss kernel array for convolutions """
+    size = int(size)
+    if not sizey:
+        sizey = size
+    else:
+        sizey = int(sizey)
+    x, y = mgrid[-size:size+1, -sizey:sizey+1]
+    #g = nu.exp(-(x**2/float(size)+y**2/float(sizey)))
+    g = nu.exp(-(x**2/(w*float(size**2))+y**2/(w*float(sizey**2))))
+    return g
+    #return g / g.sum()
 
 class DataManager(object):
     def __init__(self):
@@ -103,13 +116,30 @@ def getCoords(patImg,thr=.9,returnImage=False,returnCoords=True):
     else:
         return None
 
+def getCoordsNonBool(patImg,thr=.9,returnImage=False,returnCoords=True):
+    r = convolveOnShared(patImg,'img')
+    rmin = nu.min(r)
+    rang = nu.max(r)-rmin
+    if True:
+        return r
+    r = (r-rmin)/rang
+    #nthr = thr*rang+rmin
+    idx = r < thr
+    r[idx] = 0
+    if returnCoords and returnImage:
+        return r, nu.column_stack(nu.nonzero(r))
+    elif returnCoords:
+        return nu.column_stack(nu.nonzero(r))
+    elif returnImage:
+        return r
+    else:
+        return None
+
 def findPatternInBar(patImage,barIdx):
     return convolvePattern(patImage,dm.getObject('bars')[barIdx].getSubImage(dm.getArray('img')))
 
 def findPattern(vocItem):
     global dm
-    # jitter std as a proportion of img range
-    jitterStd = .6
     results = {}
     for i in range(len(dm.getObject('bars'))):
         for j in range(len(vocItem.getFiles())):
@@ -124,7 +154,7 @@ def calibrateVocItem(vocItem):
     global dm
     # jitter std as a proportion of img range
     emptyBar = nu.zeros(dm.getObject('bars')[0].getShape(),nu.int8)-128
-    s = 20
+    s = 30
     results = []
     for j in range(len(vocItem.getFiles())):
         jitterStd = vocItem.getThreshold(j)
@@ -135,8 +165,29 @@ def calibrateVocItem(vocItem):
                                                                    (vocItem.getImage(j),selfimg,nu.max)]))
         results.append(v)
     for j in range(len(vocItem.getFiles())):
-        v = nu.mean(nu.array([x.get() for x in results[j]]),0)
+        v = nu.median(nu.array([x.get() for x in results[j]]),0)
         vocItem.setCalibration(j,v[0],v[1])
+
+def calibrateBar(barItem):
+    global dm
+    # jitter std as a proportion of img range
+    #emptyBar = 
+    rimg = nu.array(nu.random.random(dm.getArray('img').shape),nu.int8)*255-128
+    #rimg = nu.zeros(dm.getArray('img').shape,nu.int8)-128
+    s = 30
+    results = []
+    for j in range(len(barItem.getFiles())):
+        jitterStd = barItem.getThreshold(j)
+        selfimg = jitterImageEdges(barItem.getImage(j),jitterStd)
+        v = []
+        for k in range(s):
+            v.append(dm.getObject('pool').map_async(convolvePatternFunc,[(barItem.getImage(j),rimg,nu.max),
+                                                                   (barItem.getImage(j),selfimg,nu.max)]))
+        results.append(v)
+    for j in range(len(barItem.getFiles())):
+        v = nu.median(nu.array([x.get() for x in results[j]]),0)
+        print(v)
+        barItem.setCalibration(j,v[0],v[1])
 
 def smooth(x,k):
     return nu.convolve(x,signal.hanning(k),'same')
@@ -173,7 +224,7 @@ def findBars(peaks,rbar):
             img[peak,bp] = 256
     return bar_hcoords
 
-def clusterInBar(coords,x1,x2,y1,y2):
+def clusterInBar(coords,x1,x2,y1,y2,distance=2):
     margin = 5
     inbar = coords[nu.logical_and(nu.logical_and(coords[:,0]>x1+margin,coords[:,0]<x2-margin),
                           nu.logical_and(coords[:,1]>y1+margin,coords[:,1]<y2-margin)),:]
@@ -183,24 +234,41 @@ def clusterInBar(coords,x1,x2,y1,y2):
     if inbar.shape[0] == 1:
         return inbar
     l = cluster.hierarchy.linkage(inbar)
-    c = cluster.hierarchy.fcluster(l,2,criterion='distance')
+    c = cluster.hierarchy.fcluster(l,distance,criterion='distance')
     idict = argpartition(lambda x: x[0], nu.column_stack((c,nu.arange(len(c)))))
     patternLocations = nu.empty((len(idict),2))
     for i,(k,v) in enumerate(idict.items()):
         patternLocations[i,:] = nu.mean(inbar[tuple(v),:],0)
     return nu.array(patternLocations,nu.int)
 
-def clusterCoords(coords):
+def clusterCoords(coords,distance=3):
+    if coords.shape[0] == 0:
+        return None
+    if coords.shape[0] == 1:
+        return coords
+    l = cluster.hierarchy.linkage(coords)
+    c = cluster.hierarchy.fcluster(l,distance,criterion='distance')
+    idict = argpartition(lambda x: x[0], nu.column_stack((c,nu.arange(len(c)))))
+    patternLocations = nu.empty((len(idict),2))
+    for i,(k,v) in enumerate(idict.items()):
+        patternLocations[i,:] = nu.mean(coords[tuple(v),:],0)
+    return nu.array(patternLocations,nu.int)
+
+def clusterCoordsNonBool(m):
+    coords = nu.column_stack(nu.nonzero(m))
     if coords.shape[0] == 0:
         return None
     if coords.shape[0] == 1:
         return coords
     l = cluster.hierarchy.linkage(coords)
     c = cluster.hierarchy.fcluster(l,2,criterion='distance')
+    print(coords)
+    print(c)
     idict = argpartition(lambda x: x[0], nu.column_stack((c,nu.arange(len(c)))))
     patternLocations = nu.empty((len(idict),2))
     for i,(k,v) in enumerate(idict.items()):
-        patternLocations[i,:] = nu.mean(coords[tuple(v),:],0)
+        clmax = nu.argmax([m[coord[0],coord[1]] for coord in coords[tuple(v),:]])
+        patternLocations[i,:] = coords[tuple(v),:][clmax]
     return nu.array(patternLocations,nu.int)
 
 class Bar(object):
@@ -240,6 +308,10 @@ class Bar(object):
         img[self.top:self.bottom,self.right] = 1
         return img
 
+def formatBarNotes(i,b):
+    return nu.column_stack((nu.zeros(len(b.annotations.get('n',[])),nu.int)+i,
+                            [(x[0]-b.vcenter,x[1]) for x in b.annotations.get('n',[])]))
+
 def getBarBBs(barItem):
     global dm
     barResults = []
@@ -250,6 +322,8 @@ def getBarBBs(barItem):
         barResults.append(dm.getObject('pool').apply_async(getCoords,(barImg,
                                                                       barItem.getThreshold(i),
                                                                       True,False)))
+
+    #calibrateBar(barItem)
     dm.getObject('pool').close()
     dm.getObject('pool').join()
     dm.delObject('pool')
@@ -259,6 +333,50 @@ def getBarBBs(barItem):
     print('Done')
     print('finding systems...'),
     barResults = barResults[0]
+    # TMP
+    train = False
+    if train:
+        # for train mode,  use getCoordsNonBool, and calibratebar
+        nu.savetxt('/tmp/o.txt',barItem.normalize(0,barResults,True))
+        sys.exit()
+        #barResults = normalize(barResults)
+        normImg = nu.array(255-normalize(dm.getArray('img'))*255,nu.uint8)
+
+        barimg = nu.array(255-barResults*255,nu.uint8)
+        alpha = .1
+        im = alpha*normImg + (1-alpha)*barimg #nu.minimum(normImg,barimg)
+        im_g = im #barimg
+        writeImageData('/tmp/bars/br.png'.format(i),barResults.shape,im,im_g,im)
+        
+        #barcoords = clusterCoords(nu.column_stack(nu.nonzero(barResults)))
+        barcoords = clusterCoordsNonBool(barResults)
+        #barcoords = nu.column_stack(nu.nonzero(barResults))
+        bs = nu.array(barItem.getImage(0).shape)
+        bars = []
+        print(len(barcoords))
+
+        for i,cc in enumerate(barcoords):
+            tl = nu.array(nu.round(cc-(bs-1)/2.0),nu.int)
+            br = nu.array(tl+bs,nu.int)
+            imr = 255-normalize(dm.getArray('img')[tl[0]:br[0],tl[1]:br[1]])*255
+            bars.append(imr)
+            im = nu.array(imr,nu.uint8)
+            writeImageData('/tmp/bars/b{0:04d}.png'.format(i),bs,im,im,im)
+        bars = nu.array(bars)
+        bar = nu.median(bars,axis=0)
+        imr = normalize(bar)*255
+        im = nu.array(imr,nu.uint8)
+        #alpha = nu.std(bars,axis=0)
+        alpha = nu.mean(nu.abs(bars-bar),axis=0)
+        oldalpha = normalize(barItem.masks[0])
+        alpha = nu.array(255*(.3*oldalpha+.7*(1-normalize(alpha))),nu.uint8)
+        print(alpha[1,1])
+        #alpha = nu.array(barItem.masks[0]/2.0+alpha/2.0,nu.uint8)
+        im = nu.array(barItem.pureimages[0]/2.0+im/2.0,nu.uint8)
+        writeImageData('/tmp/bars/bmean.png'.format(i),bs,im,im,im,alpha)
+    
+        sys.exit()
+    # END TMP
     system_vcoords = findSystems(barResults)
     assert len(system_vcoords) > 0
     system_vcoords.sort()
@@ -300,6 +418,7 @@ def getBarBBs(barItem):
             top,bottom = int(nu.round(sbounds[i]-vextra)),int(nu.round(sbounds[i+1]+vextra))
             left,right = int(nu.round(b_hcs[j]-hextra)),int(nu.round(b_hcs[j+1]+hextra))
             bars.append(Bar(system_vcenter,left,right,top,bottom))
+
     print('Done')
     return bars
 
@@ -341,9 +460,6 @@ def processPage(vocabulary,outname):
             barleft = bar.getLeft()
             bartop = bar.getTop()
             thr = 1
-            # OOOOPS: 
-            #if dum == ('f',0):
-            #    thr = 1.2
             mb = vocItem.normalize(labelim,m,True,thr)
             cc = clusterCoords(nu.column_stack(nu.nonzero(mb)))
             if cc != None:
@@ -355,9 +471,12 @@ def processPage(vocabulary,outname):
 
     bars = dm.getObject('bars')
     bars = [bar for bar in bars if len(bar.annotations) > 0]
+    d = nu.empty((0,3),nu.int)
     for i,b in enumerate(bars):
-        print('\nbar',i)
-        print(b.annotations)
+        print('bar',i)
+        print(b.annotations.get('n',[]))
+        d = nu.vstack((d,formatBarNotes(i,b)))
+    nu.savetxt('/tmp/n.txt',d,fmt='%d')
     dm.setObject('bars',bars)
 
     print('drawing results to image...'),

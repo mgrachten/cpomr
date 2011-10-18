@@ -3,8 +3,10 @@
 # patternName annotationColor [tolerance patternfile]+
 # tolerance is interpreted as a threshold (so higher is stricter) for bar
 # and as tolerance (lower is stricter) for other patterns
-#bar #000000 .82 bar.png
-bar #000000 .8 bar.png
+bar #000000 .85 bar.png
+#bar #000000 .8 bar-mean.png
+#bar #000000 .3 barpart3-top-middle.png
+#bar #000000 .96 bar-top-middle-mean.png
 #a #ff0000 .3 barpart2-top-begin.png
 #b #00ff00 .3 barpart2-top-end.png
 #c #0000ff .3 barpart2-bottom-begin.png
