@@ -475,8 +475,10 @@ def processPage(vocabulary,outname):
     for i,b in enumerate(bars):
         print('bar',i)
         print(b.annotations.get('n',[]))
-        d = nu.vstack((d,formatBarNotes(i,b)))
-    nu.savetxt('/tmp/n.txt',d,fmt='%d')
+        if b.annotations.has_key('n'):
+            fmn = formatBarNotes(i,b)
+            d = nu.vstack((d,fmn))
+    nu.savetxt(os.path.splitext(outname)[0]+'.txt',d[:,(0,2,1)],fmt='%d')
     dm.setObject('bars',bars)
 
     print('drawing results to image...'),
