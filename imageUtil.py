@@ -65,10 +65,12 @@ def avgChannels(img):
 def getPattern(filename,useMask=True,alphaAsMaskIfAvailable=True):
     imageFh = Image.open(filename)
     #data = nu.array(list(imageFh.getdata()))
-    assert imageFh.mode.startswith('L') or imageFh.mode.startswith('RGB')
+
+    assert imageFh.mode.startswith('L') or imageFh.mode.startswith('RGB') or imageFh.mode.startswith("1")
     s = tuple(reversed(imageFh.size))
 
     fimg = nu.array(imageFh.getdata(),nu.uint8).reshape((s[0]*s[1],-1))
+        
     #nch = img.shape[1]
     nch = len(imageFh.mode)
     hasAlpha = imageFh.mode[-1] == 'A'
