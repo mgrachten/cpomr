@@ -291,8 +291,8 @@ class Bar(object):
     def getSubImage(self,img):
         return img[self.top:self.bottom,self.left:self.right]
 
-    #def addAnnotation(self,label,coordinates):
-    #    self.annotations.append((label,coordinates))
+    def getBB(self):
+        return nu.array((self.top,self.left,self.bottom,self.right),nu.int)
 
     def getShape(self):
         return (self.bottom-self.top,self.right-self.left)
@@ -310,7 +310,9 @@ class Bar(object):
 
 def formatBarNotes(i,b):
     return nu.column_stack((nu.zeros(len(b.annotations.get('n',[])),nu.int)+i,
-                            [(x[0]-b.vcenter,x[1]) for x in b.annotations.get('n',[])]))
+                            [(x[0],x[1]) for x in b.annotations.get('n',[])]))
+    #return nu.column_stack((nu.zeros(len(b.annotations.get('n',[])),nu.int)+i,
+    #                        [(x[0]-b.vcenter,x[1]) for x in b.annotations.get('n',[])]))
 
 def getBarBBs(barItem):
     global dm
@@ -370,7 +372,6 @@ def getBarBBs(barItem):
         alpha = nu.mean(nu.abs(bars-bar),axis=0)
         oldalpha = normalize(barItem.masks[0])
         alpha = nu.array(255*(.3*oldalpha+.7*(1-normalize(alpha))),nu.uint8)
-        print(alpha[1,1])
         #alpha = nu.array(barItem.masks[0]/2.0+alpha/2.0,nu.uint8)
         im = nu.array(barItem.pureimages[0]/2.0+im/2.0,nu.uint8)
         writeImageData('/tmp/bars/bmean.png'.format(i),bs,im,im,im,alpha)
@@ -471,14 +472,21 @@ def processPage(vocabulary,outname):
 
     bars = dm.getObject('bars')
     bars = [bar for bar in bars if len(bar.annotations) > 0]
-    d = nu.empty((0,3),nu.int)
+    #d = nu.empty((0,3),nu.int)
+    d = []
+    barbb = []
     for i,b in enumerate(bars):
         print('bar',i)
         print(b.annotations.get('n',[]))
         if b.annotations.has_key('n'):
             fmn = formatBarNotes(i,b)
-            d = nu.vstack((d,fmn))
+            #d = nu.vstack((d,fmn))
+            d.append(fmn)
+            barbb.append(b.getBB())
+    d = nu.vstack(tuple(d))
+    barbb = nu.vstack(tuple(barbb))
     nu.savetxt(os.path.splitext(outname)[0]+'.txt',d[:,(0,2,1)],fmt='%d')
+    nu.savetxt(os.path.splitext(outname)[0]+'barbb.txt',barbb,fmt='%d')
     dm.setObject('bars',bars)
 
     print('drawing results to image...'),
@@ -511,7 +519,7 @@ def processPage(vocabulary,outname):
 
 if __name__ == '__main__':
     #vocabularyDir = './vocabularies/dme-4096'
-    vocabularyDir = './vocabularies/dme-2048'
+    vocabularyDir = './vocabularies/dme-2048/vocabulary-debussy-childrenscorner.txt'
     print('loading vocabulary...'),
     vocabulary = makeVocabulary(vocabularyDir)
     print('Done')

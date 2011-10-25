@@ -94,8 +94,18 @@ class ScoreVocabulary(Vocabulary):
     def getBar(self):
         return self.bar
 
-def makeVocabulary(vocabularyDir):
+def makeVocabularyOld(vocabularyDir):
     vocfile = os.path.join(vocabularyDir,'vocabulary.txt')
+    vocabulary = ScoreVocabulary()
+    with open(vocfile,'r') as f:
+        for l in f.readlines():
+            if l[0] is not '#' and len(l.strip()) > 0:
+                vocabulary.addItem(VocabularyItem(l,vocabularyDir))
+    return vocabulary
+
+def makeVocabulary(vocfile):
+    #vocfile = os.path.join(vocabularyDir,'vocabulary.txt')
+    vocabularyDir = os.path.dirname(vocfile)
     vocabulary = ScoreVocabulary()
     with open(vocfile,'r') as f:
         for l in f.readlines():
