@@ -32,28 +32,35 @@ def makeHZ(img):
     return hl
     #nu.savetxt('/tmp/hl.txt',hl)
 
-def findSystemLR(vp):
+def findSystemLRNew(v):
+    vp = v.copy()
     # margin is proportion of pagewidth from sides where dont look for system boundaries 
-    margin = .02
-    # windowsize is the size of the step window used to detect the sides of the systems
-    windowsize = 1/70.
+    vpmin,vpmax = nu.min(vp),nu.max(vp)
     N = vp.shape[0]
-    W = 2*int(nu.round((N*windowsize)/2.))
-    w = nu.zeros(W)
-    w[W/2:] = 1
-    w = w-.5
-    wl = nu.convolve(vp,w,'same')
-    wr = nu.convolve(vp,w[::-1],'same')
-    weight = nu.linspace(0,1,N)**2
-    wlr = (1-weight)*wr+weight*wl
-    pidx = getIdxOfMaxima(wlr)
-    pidx = pidx[nu.logical_and(pidx > margin*N,pidx < N-N*margin)]
-    #nu.savetxt('/tmp/tst.txt',nu.column_stack((pidx,wlr[pidx])))
-    #nu.savetxt('/tmp/tst1.txt',wlr)
-    sp = nu.argsort(wlr[pidx])[-2:]
-    sp = nu.sort(sp)
-    #print(pidx[sp[0]],pidx[sp[1]])
-    return pidx[sp[0]],pidx[sp[1]]
+    margin = .05
+    low = nu.sort(nu.nonzero(vp<(vpmin+(vpmax-vpmin)*margin))[0])
+    vp[:low[0]] = vpmin
+    vp[low[-1]:] = vpmin
+    #vp[:int(N*margin)] = vpmin
+    #vp[N-int(N*margin):] = vpmin
+    vp = (vp-vpmin)/(vpmax-vpmin)-.5
+    #vpmin,vpmax = nu.min(vp),nu.max(vp)
+
+    K = N/70.
+    wsys = signal.gaussian(K,K/5.0)
+    wsys = nu.hstack((wsys,-wsys))
+    nu.savetxt('/tmp/wsys.txt',wsys)
+    wconv = nu.convolve(vp,wsys,'valid')
+    sidx = nu.argsort(wconv)
+    k = int((N-wconv.shape[0])/2)
+    left = k+sidx[-1]+K/2.0
+    right = k+sidx[0]-K/2.0
+    #right = nu.argmin(wconv)+K/2.0
+    wcon = nu.zeros(vp.shape[0])
+    print(left,right)
+    wcon[k:k+wconv.shape[0]] = wconv
+    nu.savetxt('/tmp/n.txt',nu.column_stack((vp,wcon)))
+    return int(left),int(right)
 
 def addPrior(pdf,proportion,prior=None):
     if prior == None:
@@ -104,10 +111,9 @@ def findBars(img,fn):
     hp = makeHZ(img)
     vp = nu.sum(img,0)
     vp = vp-.5*nu.median(vp)
-    sl,sr = findSystemLR(vp)
-
+    sl,sr = findSystemLRNew(vp)
     # TODO make sure the selection doesn't give index errors in pathetic cases:
-    borderW = 10
+    borderW = 20
     leftpdf = nu.sum(img[:,sl-borderW:sl+borderW],1)
     rightpdf = nu.sum(img[:,sr-borderW:sr+borderW],1)
 
@@ -116,7 +122,7 @@ def findBars(img,fn):
     rightpdf = nu.log(addPrior(rightpdf,proportion=prior))
     hp = horzpdf*leftpdf*rightpdf
     hp = hp-nu.mean(hp)
-    #nu.savetxt('/tmp/hp.txt',nu.column_stack((horzpdf,leftpdf,rightpdf,horzpdf*leftpdf*rightpdf)))
+    nu.savetxt('/tmp/hp.txt',nu.column_stack((horzpdf,leftpdf,rightpdf,horzpdf*leftpdf*rightpdf)))
     # smooth curve to find systems
     k = N/nu.float(K)
     w = signal.gaussian(k,k/8.)/k
@@ -125,12 +131,14 @@ def findBars(img,fn):
     systemCenters = getIdxOfMaxima(c)
     avgSystemDist = nu.median(nu.diff(nu.sort(systemCenters)))
 
-    wsys = signal.gaussian(avgSystemDist/5,avgSystemDist/5)/k
+    #wsys = signal.gaussian(avgSystemDist/5,avgSystemDist/5)/k
+    # TESTING: REMOVED SPURIOUS k
+    wsys = signal.gaussian(avgSystemDist/5.,avgSystemDist/5.)
     wsys = nu.hstack((wsys,-wsys))
     cwtop = nu.convolve(hp,wsys,'same')
     cwbot = nu.convolve(hp,-wsys,'same')
     limits = findVertSystemLimits(systemCenters,cwbot,cwtop)
-
+    #sys.exit()
     # save image
     im_r = 255-img
     im_g = 255-img
