@@ -38,37 +38,70 @@ def findSystemLRNew(v):
     # margin is proportion of pagewidth from sides where dont look for system boundaries 
     vpmed = nu.median(vp)
     vpmin,vpmax = nu.min(vp),nu.max(vp)
-    print(vpmed)
-    print(vpmin,vpmax)
+    #print(vpmed)
+    #print(vpmin,vpmax)
     N = vp.shape[0]
     margin = .05
+    # TODO: catch situations where there are no lows in left or right halves
     lowidx = vp<(vpmin+(vpmed-vpmin)*margin)
     low = nu.sort(nu.nonzero(lowidx)[0])
+    nu.savetxt('/tmp/nn.txt',nu.column_stack((v,lowidx.astype(nu.int))))
     lidx = low<N/2
-    vp[:int(nu.median(low[lidx]))] = vpmin
-    vp[int(nu.median(low[nu.logical_not(lidx)])):] = vpmin
+    leftInvalid = False
+    rightInvalid = False
+    if any(lidx):
+        vp[:int(nu.median(low[lidx]))] = vpmin
+    else:
+        # no whitespace column left of system
+        # probably due to black scanning artifacts on the left
+        leftInvalid = True
+    ridx = nu.logical_not(lidx)
+    if any(ridx):
+        vp[int(nu.median(low[ridx])):] = vpmin
+    else:
+        # no whitespace column left of system
+        # probably due to black scanning artifacts on the left
+        rightInvalid = True
+
     vpmax = nu.max(vp)
-    
     vp = normalize(vp)
     vpmed = nu.median(vp)
     vp = vp-vpmed/2.0
-
-    K = N/60.
-    wsys = signal.gaussian(K,K/5.0)
-    wsys = nu.hstack((wsys,-wsys))
-    nu.savetxt('/tmp/wsys.txt',wsys)
-    wconv = nu.convolve(vp,wsys,'valid')
-    #sidx = nu.argsort(wconv)
-    k = int((N-wconv.shape[0])/2)
-    left = k+nu.argmax(wconv[:int(N/2)])+K/2.0
-    right = k+N/2+nu.argmin(wconv[int(N/2):])-K/2.0
-    #k+sidx[0]-K/2.0
-    #right = nu.argmin(wconv)+K/2.0
-    wcon = nu.zeros(vp.shape[0])
-    print(left,right)
-    wcon[k:k+wconv.shape[0]] = wconv
-    nu.savetxt('/tmp/n.txt',nu.column_stack((v,vp,wcon)))
-    return int(left),int(right)
+    
+    if True:
+        K = N/100.
+        wsys = signal.gaussian(K,K/5.0)
+        wsys = nu.hstack((wsys,-wsys))
+        nu.savetxt('/tmp/wsys.txt',wsys)
+        wconv = nu.convolve(vp,wsys,'same')
+        #sidx = nu.argsort(wconv)
+        #k = int((N-wconv.shape[0])/2)
+        left = nu.argmax(wconv[:int(N/2)])+K/2.0
+        right = N/2+nu.argmin(wconv[int(N/2):])-K/2.0
+        #k+sidx[0]-K/2.0
+        #right = nu.argmin(wconv)+K/2.0
+        #wcon = nu.zeros(vp.shape[0])
+        #wcon[k:k+wconv.shape[0]] = wconv
+        nu.savetxt('/tmp/n.txt',nu.column_stack((v,vp,wconv)))
+        print('lr',int(left),int(right))
+        return -1 if leftInvalid else int(left), -1 if rightInvalid else int(right)
+    else:
+        K = N/60.
+        wsys = signal.gaussian(K,K/5.0)
+        wsys = nu.hstack((wsys,-wsys))
+        nu.savetxt('/tmp/wsys.txt',wsys)
+        wconv = nu.convolve(vp,wsys,'valid')
+        #sidx = nu.argsort(wconv)
+        k = int((N-wconv.shape[0])/2)
+        left = k+nu.argmax(wconv[:int(N/2)])+K/2.0
+        right = k+N/2+nu.argmin(wconv[int(N/2):])-K/2.0
+        #k+sidx[0]-K/2.0
+        #right = nu.argmin(wconv)+K/2.0
+        wcon = nu.zeros(vp.shape[0])
+        wcon[k:k+wconv.shape[0]] = wconv
+        nu.savetxt('/tmp/n.txt',nu.column_stack((v,vp,wcon)))
+        print('lr',int(left),int(right))
+        return int(left),int(right)
 
 def addPrior(pdf,proportion,prior=None):
     if prior == None:
@@ -105,6 +138,7 @@ def findVertSystemLimits(centers,bottomCurve,topCurve):
     limits[-1].append(nu.argmax(bottomCurve[start:])+start)
     return limits
 
+
 def findBars(img,fn):
     # smooth to get rid of barline peaks
     # typical nr of staffs per page
@@ -116,21 +150,40 @@ def findBars(img,fn):
     # impact of prior for different system pdfs to be multiplied
     prior = .5
 
+    bg = nu.median(img)+10
+    img[img < bg] = 0
     hp = makeHZ(img)
     vp = nu.sum(img,0)
+
     vp = vp-.5*nu.median(vp)
+    print('white',bg)
     sl,sr = findSystemLRNew(vp)
     # TODO make sure the selection doesn't give index errors in pathetic cases:
     borderW = 20
-    leftpdf = nu.sum(img[:,sl-borderW:sl+borderW],1)
-    rightpdf = nu.sum(img[:,sr-borderW:sr+borderW],1)
-
     horzpdf = nu.log(addPrior(hp,proportion=prior))
-    leftpdf = nu.log(addPrior(leftpdf,proportion=prior))
-    rightpdf = nu.log(addPrior(rightpdf,proportion=prior))
-    hp = horzpdf*leftpdf*rightpdf
+    hp = horzpdf
+    #hp = horzpdf*leftpdf*rightpdf
+    out = horzpdf
+    if sl >= 0: 
+        leftpdf = nu.sum(img[:,sl-borderW:sl+borderW],1)
+        leftpdf = nu.log(addPrior(leftpdf,proportion=prior))
+        hp *= leftpdf
+        out = nu.column_stack((out,leftpdf))
+    else:
+        hp = -hp
+        print('no left pdf')
+    if sr >= 0: 
+        rightpdf = nu.sum(img[:,sr-borderW:sr+borderW],1)
+        rightpdf = nu.log(addPrior(rightpdf,proportion=prior))
+        hp *= rightpdf
+        out = nu.column_stack((out,rightpdf))
+    else:
+        hp = -hp
+        print('no right pdf')
     hp = hp-nu.mean(hp)
-    nu.savetxt('/tmp/hp.txt',nu.column_stack((horzpdf,leftpdf,rightpdf,horzpdf*leftpdf*rightpdf)))
+    out = nu.column_stack((out,hp))
+    
+    nu.savetxt('/tmp/hp.txt',out)
     # smooth curve to find systems
     k = N/nu.float(K)
     w = signal.gaussian(k,k/8.)/k
@@ -146,65 +199,90 @@ def findBars(img,fn):
     cwtop = nu.convolve(hp,wsys,'same')
     cwbot = nu.convolve(hp,-wsys,'same')
     limits = findVertSystemLimits(systemCenters,cwbot,cwtop)
-    #sys.exit()
+    print('centers',systemCenters)
+    print('limits',limits)
+
     # save image
     im_r = 255-img
     im_g = 255-img
-    for top,bot in limits:
-            im_g[top,:] = 20
-            im_r[top,:] = 50
-            im_r[bot,:] = 50
-            im_g[bot,:] = 20
-            c = int(nu.round((top+bot)/2.))
-            im_g[c,:] = 20
-            im_r[c,:] = 20
+    for i,(top,bot) in enumerate(limits):
+        # findBarsInSystem(img,limits[system][0],limits[system][1])
+        left,right = findSysBlob(img,top,bot)
+        print(i,left,right,top,bot)
+        im_g[top:bot,left] = 0
+        im_r[top:bot,left] = 255
+        im_g[top:bot,right] = 0
+        im_r[top:bot,right] = 255
+        im_g[top,left:right] = 0
+        im_r[top,left:right] = 255
+        im_g[bot,left:right] = 0
+        im_r[bot,left:right] = 255
     im_b = im_g
     writeImageData(os.path.join('/tmp',os.path.basename(fn).replace('.tif','.png')),img.shape,im_r,im_g,im_b)
 
-def findBarsTry(img,fn):
+def findSysBlob(img,top,bot):
+    # idea:
+    # parameters: BGthreshold, maxBGWidth
+    bgSurfacePercentage = 30 # assumed % of surface that counts as background
+    bgThreshold = nu.percentile(img[top:bot,:].ravel(),bgSurfacePercentage)
     N,M = img.shape
-    r = nu.zeros(N)
-    sums = nu.sum(img,0)
-    prior = .1
-    for i in range(M):
-        print(i,M)
-        if sums[i] > 0:
-            #r += nu.log(prior/N+(1-prior)*img[:,i]/sums[i])
-            r += prior/N+(1-prior)*img[:,i]/sums[i]
-    nu.savetxt(fn,normalize(r))
+    maxBgWidth = .01*N # gaps in system cannot exceed 1/100 of page width
+    cmeans = nu.mean(img[top:bot,:],0)
+    #nu.savetxt('/tmp/lc.txt',nu.column_stack((cmeans,cmeans > bgThreshold)))
+    d = nu.diff((cmeans > bgThreshold).astype(nu.int))
+    assert len(d) > 0
+    gaps = nu.nonzero(d)[0]
+    dgaps = nu.diff(gaps)
+    dgaps = nu.append(dgaps,0)
+    #n = nu.zeros((len(gaps),3),nu.int)
+    #n[:,0] = gaps
+    #n[:,1] = d[gaps]
+    #n[:,2] = dgaps
+    #print(n)
+    startidx = d[gaps] == 1
+    blobstarts = nu.nonzero(startidx)
+    blobstartidx = nu.argmax(dgaps[blobstarts])
+    begin = gaps[blobstarts][blobstartidx]
+    end = begin+dgaps[blobstarts][blobstartidx]
+    return begin, end
 
 
-def smooth(x,k):
-    smoothingkernel = (nu.ones(k)*k)**-1
-    return nu.convolve(x,smoothingkernel,'same')
+def findBarsInSystem(img,top,bot):
+    sums = nu.sum(img[top:bot,:],0)
+    candidates = nu.argsort(sums)[::-1]
+    cs = nu.zeros(img[top:bot,:].shape)
 
-def downSample(d,k):
-    """Downsample x by smoothing plus linear interpolation
-    d -- a NxM matrix
-    k -- downsampling parameter: the result will have N/2**k rows
-    """
-    xsmooth = d.copy()
-    N,M = xsmooth.shape
-    for i in range(1,M):
-        xsmooth[:,i] = smooth(d[:,i],2**k)
-    assert(N > 1)
-    idx = nu.linspace(0,N-1,int(N/float(2**k)))
-    origIdx = nu.arange(N)
-    d = [interpolate.interp1d(origIdx,xsmooth[:,x])(idx) for x in range(M)]
-    return nu.column_stack(d)
-
-
+    #l = cluster.hierarchy.linkage(inbar)
+    #c = cluster.hierarchy.fcluster(l,distance,criterion='distance')
+    imrange = nu.max(img)-nu.min(img)
+    print('c',candidates[:10])
+    H = bot-top
+    for i,c in enumerate(candidates[:15]):
+        #cs[:,i] = nu.cumsum(img[top:bot,c])
+        cs[:,i] = img[top:bot,c] < .5*imrange
+        nonz = nu.nonzero(cs[:,i])[0]
+        if len(nonz) < 1:
+            print('max contiguous',1.0)
+        else:
+            print('max contiguous',nu.max(nu.diff(nonz))/float(H))
+    nu.savetxt('/tmp/l.txt',sums)
+    nu.savetxt('/tmp/cs.txt',cs)
+    
 if __name__ == '__main__':
     fn = sys.argv[1]
+    print('Loading image...'),
+    sys.stdout.flush()
     try:
         img = 255-getPattern(fn,False,False)
-        print(nu.max(img))
     except IOError as e: 
         print('problem')
         raise e
         sys.exit()#pass
+    print('Done')
+    findBars(img,fn)
+    #nu.savetxt('/tmp/p.txt',nu.sum(img,1))
+    sys.exit()    
 
-    findBarsTry(img,'/tmp/p.txt')
     N,M = img.shape
     K = N/3
     w = signal.gaussian(K,K/4.0).reshape((1,-1))
