@@ -60,7 +60,11 @@ def getImageData(filename):
     return data
 
 def avgChannels(img):
-    return nu.mean(img,axis=1)
+    if img.shape[1] > 1:
+        return nu.mean(img,axis=1)
+    else:
+        return img
+
 
 def getPattern(filename,useMask=True,alphaAsMaskIfAvailable=True):
     imageFh = Image.open(filename)
