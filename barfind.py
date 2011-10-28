@@ -4,7 +4,7 @@ import sys,os
 from scipy import signal,cluster
 import numpy as nu
 from imageUtil import getImageData, writeImageData, makeMask, normalize, jitterImageEdges,getPattern
-from utilities import argpartition, partition
+from utilities import argpartition, partition, makeColors
 from main import convolve
 
 def smooth(x,k):
@@ -205,13 +205,21 @@ def findBars(img,fn):
     # save image
     im_r = 255-img
     im_g = 255-img
-    for i,(top,bot) in enumerate(limits):
+    im_b = 255-img
+    for i,(top,bot) in enumerate(limits[:]):
         # findBarsInSystem(img,limits[system][0],limits[system][1])
         left,right = findSysBlob(img,top,bot)
+        margin = 5
+        top -= margin
+        left -= margin
+        bot += margin
+        right += margin
         print('finding stafflines in system',i)
-        staffxs = findStaffLinesInSystem(img,top,bot,left,right)
-        print(staffxs)
-        #sys.exit()
+        #staff_x_angle = findStaffLinesInSystem(img,top,bot,left,right)
+        agents = findStaffLinesInSystem(img,top,bot,left,right)
+        staff_x_angle = [(a.point[0]+top,a.angle) for a in agents]
+        print(staff_x_angle)
+
         #print('finding bars in system',i)
         #barys = findBarsInSystem(img,top,bot,left,right)
         print(i,left,right,top,bot)
@@ -223,16 +231,45 @@ def findBars(img,fn):
         im_r[top,left:right] = 255
         im_g[bot,left:right] = 0
         im_r[bot,left:right] = 255
+
         print('left right',left,right)
-        for s in staffxs:
-            im_g[s,left-10:right+10] = 0
-            im_r[s,left-10:right+10] = 255
+        colors = makeColors(len(agents))
+        for j,a in enumerate(agents):
+            #v1 = int(nu.random.randint(255))
+            #v2 = int(nu.random.randint(255))
+            #v3 = int(nu.random.randint(255))
+            for points in a.points:
+                im_g[points[0]+top-1:points[0]+top+1,points[1]] = colors[j][0]
+                im_r[points[0]+top-1:points[0]+top+1,points[1]] = colors[j][1]
+                im_b[points[0]+top-1:points[0]+top+1,points[1]] = colors[j][2]
+        continue 
+
+        for s,angle in staff_x_angle:
+            #im_g[s,left-10:right+10] = 0
+            #im_r[s,left-10:right+10] = 255
+            print(s,angle)
+            horz = nu.arange(left-10,right+10)
+            vert = (s-(horz-s)*nu.sin(2*nu.pi*angle))
+            hv = nu.column_stack((horz,vert)).astype(nu.int)
+            print(vert)
+            for h,v in hv:
+                im_g[v,h] = 255
+                im_b[v,h] = 255
+                im_r[v,h] = 0
+            #im_r[vert,left-10:right+10] = 255
+            #im_g[vert,left-10:right+10] = 0
+            #im_r[vert,left-10:right+10] = 255
+            #im_g[s,] = 0
         #for b in barys:
         #    im_g[top-50:bot+50,b] = 0
         #    im_r[top-50:bot+50,b] = 255
-    im_b = im_g
+
+    #im_b = im_g
     writeImageData(os.path.join('/tmp',os.path.basename(fn).replace('.tif','.png')),img.shape,im_r,im_g,im_b)
 
+def ravel_multi_index(pairs,D):
+    pass
+    
 def findSysBlob(img,top,bot):
     # idea:
     # parameters: BGthreshold, maxBGWidth
@@ -261,17 +298,20 @@ def findSysBlob(img,top,bot):
 
 
 class Agent(object):
-    minAngleDeg = 87
-    maxAngleDeg = 93
-    minScore = -10
+    targetAngleDeg = 0
+    minScore = 0
     def __init__(self,xy):
         self.point = xy
-        self.angle = None
+        self.points = [xy]
+        self.angle = self.targetAngleDeg
         self.score = 0
         self.adopted = True
+        self.age = 0
+        self.nadopted = 0
     def __str__(self):
-        return 'Agent: point: {0}; angle: {1}; score: {2}'.format(self.point,self.angle,self.score)
+        return 'Agent: point: {0}; angle: {1}; score: {2} age: {3}'.format(self.point,self.angle,self.score,self.age)
     def tick(self):
+        self.age += 1
         if self.adopted:
             self.score += 1
         else:
@@ -282,89 +322,147 @@ class Agent(object):
         return score
     def died(self):
         return self.score < Agent.minScore
-    def adopt(self,xy):
-        diff = nu.abs(self.point-xy)
-        # arctan2(vert_component,horz_component)
-        angleRad = nu.arctan2(diff[0],diff[1])/(2*nu.pi)
-        #print(xy,self.point,angleRad),
-        if self.minAngleDeg/360. <= angleRad <= self.maxAngleDeg/360.:
-            if self.angle is None:
-                self.angle = angleRad
-                adopted = True
-            else:
-                if nu.abs(self.angle - angleRad) <= (self.maxAngleDeg-self.minAngleDeg)/(2*360.):
-                    adopted = True
+
+    def getAngle(self,xy):
+        return nu.arctan2(*nu.abs(self.point-xy))/(2*nu.pi)
+        
+    #def getBestAngle(self,xy0,xy1=None):
+        
+    def award(self,xy0,xy1=None):
+        self.adopted = True
+        self.nadopted += 1
+        if False:
+            return True
+
+        bestAngle = nu.abs(self.bid(xy0,xy1))
+        self.angle = ((self.nadopted-1)*self.angle+bestAngle)/self.nadopted
+        if xy1 == None:
+            newpoint = xy0
+        else:
+            #newpoint = (xy0+xy1)/2.
+            if xy0[0] == xy1[0]:
+                newpoint = nu.array((xy0[0],self.point[1]+(xy0[0]-self.point[0])*nu.cos(2*nu.pi*bestAngle)))
+            if xy0[1] == xy1[1]:
+                newpoint = nu.array((self.point[0]+(xy0[1]-self.point[1])*nu.sin(2*nu.pi*bestAngle),xy0[1]))
+                if xy0[0] < xy1[0]:
+                    smallest = xy0
+                    largest = xy1
                 else:
-                    adopted = False
-        else:
-            adopted = False
-        if adopted:
-            self.adopted = True
-            #print('{0} adopted by agent "{1}"'.format(xy,self))
-        else:
-            #print('{0} rejected by agent "{1}"'.format(xy,self))
-            pass
-        return adopted
+                    smallest = xy1
+                    largest = xy0
+                if newpoint[0] < smallest[0]:
+                    newpoint = smallest
+                if newpoint[0] > largest[0]:
+                    newpoint = largest
+                print('np',bestAngle,self.point,xy0,xy1,newpoint)
+            else:
+                print('Error, dont know what to do')
+        self.point = ((self.nadopted-1)*self.point+newpoint)/self.nadopted
+        self.points.append(newpoint)
 
-
+    def evaluateAngle(self,a):
+        return a-nu.abs(self.angle%360.)
+      
+    def bid(self,xy0,xy1=None):
+        a0 = self.getAngle(xy0)
+        e0 = self.evaluateAngle(a0)
+        if xy1 is None:
+            return e0
+        a1 = self.getAngle(xy1)
+        e1 = self.evaluateAngle(a1)
+        if a0 <= a1:
+            if e0 <= 0 and e1 >= 0:
+                return 0
+            else:
+                if nu.abs(e0) < nu.abs(e1):
+                    return e0
+                else:
+                    return e1
+        else:
+            if e1 <= 0 and e0 >= 0:
+                return 0
+            else:
+                if nu.abs(e0) < nu.abs(e1):
+                    return e0
+                else:
+                    return e1
+                
 class BarLineAgent(Agent):
-    minAngleDeg = 87
-    maxAngleDeg = 93
-    minScore = -5
+    #minAngleDeg = 87
+    #maxAngleDeg = 93
+    targetAngleDeg = 90
+    minScore = -10
     
 class StaffLineAgent(Agent):
-    minAngleDeg = -.4
-    maxAngleDeg = .4
+    #minAngleDeg = -1
+    #maxAngleDeg = 1
+    targetAngleDeg = 0
     minScore = -5
         
 def getCrossings(v,agents,AgentType,vert=None,horz=None):
     mindist = 1
     data = nu.nonzero(v)[0]
     if len(data) > 1:
-        l = cluster.hierarchy.linkage(data.reshape((-1,1)))
-        c = cluster.hierarchy.fcluster(l,mindist,criterion='distance')
-        candidates = [(data[z[0]]+data[z[-1]])/2.0 for z in argpartition(lambda x: x, c).values()]
+        candidates = [x if len(x)==1 else (x[0],x[-1]) for x in nu.split(data,nu.nonzero(nu.diff(data)>1)[0]+1)]
+    elif len(data) == 1:
+        candidates = [data]
     else:
-        candidates = data
-    #print('candidates',len(candidates))
+        return agents
     #print(vert)
+    #print('protocandidates',candidates)
     if vert is not None:
-        candidates = nu.array([[vert,horz] for horz in candidates])
+        candidates = [[nu.array([vert,horz]) for horz in horzz] for horzz in candidates]
     elif horz is not None:
-        candidates = nu.array([[vert,horz] for vert in candidates])
+        candidates = [[nu.array([vert,horz]) for vert in vertz] for vertz in candidates]
     else:
         print('error, need to specify vert or horz')
+    #print('candidates',len(candidates))
+    #print('candidates',candidates)
+    #print('agents',len(agents))
     unadopted = []
+    maxDeviation = .5/360.
     for i,c in enumerate(candidates):
-        adopted = False
-        for a in agents:
-            adopted = a.adopt(c)
-            if adopted:
-                break
-        if not adopted:
+        if len(agents) == 0:
             unadopted.append(i)
+        else:
+            bids = [nu.abs(a.bid(*c)) for a in agents]
+            bestBidder = nu.argmin(bids)
+            #print('bids',bids)
+            if bids[bestBidder] < maxDeviation:
+                #print('c',bids[bestBidder],maxDeviation)
+                agents[bestBidder].award(*c)
+            else:
+                unadopted.append(i)
     for i in unadopted:
-        agents.append(AgentType(candidates[i]))
+        agents.append(AgentType(nu.mean(nu.array(candidates[i]),0)))
+        #for j in candidates[i]:
+            #print('unadopted',j)
+        
     return [a for a in agents if a.tick()]
 
 
 def findStaffLinesInSystem(img,top,bot,left,right):
     maxStaffLines = 15
-    lookatProportion = .8
+    lookatProportion = .2
     vsums = nu.sum(img[top:bot,left:right],0)
+    #vsums = vsums[nu.nonzero(vsums)[0]]
     colorder = nu.argsort(vsums)
+    colorder = colorder[nu.nonzero(vsums[colorder])]
+    #print(vsums[colorder[:10]])
+    #print('first nonz:',nu.where(vsums[colorder]>0))
+
     #center = int((bot+top)/2)
     agents = []
     N = right-left
-    #for c in colorder[:int(lookatProportion*N)]:
-    for c in colorder:
+    for c in colorder[:int(lookatProportion*N)]:
+    #for c in colorder:
         #print('column',c+left)
         agents = getCrossings(img[top:bot,left+c],agents,StaffLineAgent,horz=left+c)
         #print('agents',len(agents))
     #sys.exit()
     print(N/2)
     agents = agents[:maxStaffLines]
-    agents.sort(key=lambda x: x.score)
+    agents.sort(key=lambda x: x.age*x.score)
     agents.reverse()
     for a in agents:
         print('{1} {0}'.format(a,a.point[0]+top))
@@ -372,7 +470,9 @@ def findStaffLinesInSystem(img,top,bot,left,right):
     print(k+1,'stafflines found')
     for a in agents[:k+1]:
         print('{1} {0}'.format(a,a.point[0]+top))
-    return [a.point[0]+top for a in agents[:k+1]]
+    print('nr of agents',len(agents))
+    return agents[:10]
+    #return [(a.point[0]+top,a.angle) for a in agents[:10]]
 
 def findBarsInSystem(img,top,bot,left,right):
     maxBarLines = 20
