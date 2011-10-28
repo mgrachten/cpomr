@@ -208,6 +208,12 @@ def findBars(img,fn):
     for i,(top,bot) in enumerate(limits):
         # findBarsInSystem(img,limits[system][0],limits[system][1])
         left,right = findSysBlob(img,top,bot)
+        print('finding stafflines in system',i)
+        staffxs = findStaffLinesInSystem(img,top,bot,left,right)
+        print(staffxs)
+        #sys.exit()
+        #print('finding bars in system',i)
+        #barys = findBarsInSystem(img,top,bot,left,right)
         print(i,left,right,top,bot)
         im_g[top:bot,left] = 0
         im_r[top:bot,left] = 255
@@ -217,6 +223,13 @@ def findBars(img,fn):
         im_r[top,left:right] = 255
         im_g[bot,left:right] = 0
         im_r[bot,left:right] = 255
+        print('left right',left,right)
+        for s in staffxs:
+            im_g[s,left-10:right+10] = 0
+            im_r[s,left-10:right+10] = 255
+        #for b in barys:
+        #    im_g[top-50:bot+50,b] = 0
+        #    im_r[top-50:bot+50,b] = 255
     im_b = im_g
     writeImageData(os.path.join('/tmp',os.path.basename(fn).replace('.tif','.png')),img.shape,im_r,im_g,im_b)
 
@@ -247,27 +260,142 @@ def findSysBlob(img,top,bot):
     return begin, end
 
 
-def findBarsInSystem(img,top,bot):
-    sums = nu.sum(img[top:bot,:],0)
-    candidates = nu.argsort(sums)[::-1]
-    cs = nu.zeros(img[top:bot,:].shape)
-
-    #l = cluster.hierarchy.linkage(inbar)
-    #c = cluster.hierarchy.fcluster(l,distance,criterion='distance')
-    imrange = nu.max(img)-nu.min(img)
-    print('c',candidates[:10])
-    H = bot-top
-    for i,c in enumerate(candidates[:15]):
-        #cs[:,i] = nu.cumsum(img[top:bot,c])
-        cs[:,i] = img[top:bot,c] < .5*imrange
-        nonz = nu.nonzero(cs[:,i])[0]
-        if len(nonz) < 1:
-            print('max contiguous',1.0)
+class Agent(object):
+    minAngleDeg = 87
+    maxAngleDeg = 93
+    minScore = -10
+    def __init__(self,xy):
+        self.point = xy
+        self.angle = None
+        self.score = 0
+        self.adopted = True
+    def __str__(self):
+        return 'Agent: point: {0}; angle: {1}; score: {2}'.format(self.point,self.angle,self.score)
+    def tick(self):
+        if self.adopted:
+            self.score += 1
         else:
-            print('max contiguous',nu.max(nu.diff(nonz))/float(H))
-    nu.savetxt('/tmp/l.txt',sums)
-    nu.savetxt('/tmp/cs.txt',cs)
+            self.score -= 1
+        self.adopted = False
+        return not self.died()
+    def getScore(self):
+        return score
+    def died(self):
+        return self.score < Agent.minScore
+    def adopt(self,xy):
+        diff = nu.abs(self.point-xy)
+        # arctan2(vert_component,horz_component)
+        angleRad = nu.arctan2(diff[0],diff[1])/(2*nu.pi)
+        #print(xy,self.point,angleRad),
+        if self.minAngleDeg/360. <= angleRad <= self.maxAngleDeg/360.:
+            if self.angle is None:
+                self.angle = angleRad
+                adopted = True
+            else:
+                if nu.abs(self.angle - angleRad) <= (self.maxAngleDeg-self.minAngleDeg)/(2*360.):
+                    adopted = True
+                else:
+                    adopted = False
+        else:
+            adopted = False
+        if adopted:
+            self.adopted = True
+            #print('{0} adopted by agent "{1}"'.format(xy,self))
+        else:
+            #print('{0} rejected by agent "{1}"'.format(xy,self))
+            pass
+        return adopted
+
+
+class BarLineAgent(Agent):
+    minAngleDeg = 87
+    maxAngleDeg = 93
+    minScore = -5
     
+class StaffLineAgent(Agent):
+    minAngleDeg = -.4
+    maxAngleDeg = .4
+    minScore = -5
+        
+def getCrossings(v,agents,AgentType,vert=None,horz=None):
+    mindist = 1
+    data = nu.nonzero(v)[0]
+    if len(data) > 1:
+        l = cluster.hierarchy.linkage(data.reshape((-1,1)))
+        c = cluster.hierarchy.fcluster(l,mindist,criterion='distance')
+        candidates = [(data[z[0]]+data[z[-1]])/2.0 for z in argpartition(lambda x: x, c).values()]
+    else:
+        candidates = data
+    #print('candidates',len(candidates))
+    #print(vert)
+    if vert is not None:
+        candidates = nu.array([[vert,horz] for horz in candidates])
+    elif horz is not None:
+        candidates = nu.array([[vert,horz] for vert in candidates])
+    else:
+        print('error, need to specify vert or horz')
+    unadopted = []
+    for i,c in enumerate(candidates):
+        adopted = False
+        for a in agents:
+            adopted = a.adopt(c)
+            if adopted:
+                break
+        if not adopted:
+            unadopted.append(i)
+    for i in unadopted:
+        agents.append(AgentType(candidates[i]))
+    return [a for a in agents if a.tick()]
+
+
+def findStaffLinesInSystem(img,top,bot,left,right):
+    maxStaffLines = 15
+    lookatProportion = .8
+    vsums = nu.sum(img[top:bot,left:right],0)
+    colorder = nu.argsort(vsums)
+    #center = int((bot+top)/2)
+    agents = []
+    N = right-left
+    #for c in colorder[:int(lookatProportion*N)]:
+    for c in colorder:
+        #print('column',c+left)
+        agents = getCrossings(img[top:bot,left+c],agents,StaffLineAgent,horz=left+c)
+        #print('agents',len(agents))
+    #sys.exit()
+    print(N/2)
+    agents = agents[:maxStaffLines]
+    agents.sort(key=lambda x: x.score)
+    agents.reverse()
+    for a in agents:
+        print('{1} {0}'.format(a,a.point[0]+top))
+    k = nu.argmin(nu.diff([a.score for a in agents]))
+    print(k+1,'stafflines found')
+    for a in agents[:k+1]:
+        print('{1} {0}'.format(a,a.point[0]+top))
+    return [a.point[0]+top for a in agents[:k+1]]
+
+def findBarsInSystem(img,top,bot,left,right):
+    maxBarLines = 20
+    lookatProportion = .3
+    hsums = nu.sum(img[top:bot,left:right],1)
+    roworder = nu.argsort(hsums)
+    #center = int((bot+top)/2)
+    agents = []
+    N = bot-top
+    for r in roworder[:int(lookatProportion*N)]:
+        agents = getCrossings(img[top+r,left:right],agents,BarLineAgent,vert=top+r)
+    print(N/2)
+    agents = agents[:maxBarLines]
+    agents.sort(key=lambda x: x.score)
+    agents.reverse()
+    for a in agents:
+        print('{1} {0}'.format(a,a.point[1]+left))
+    k = nu.argmin(nu.diff([a.score for a in agents]))
+    print(k+1,'barlines found')
+    for a in agents[:k+1]:
+        print('{1} {0}'.format(a,a.point[1]+left))
+    return [a.point[1]+left for a in agents[:k+1]]
+
 if __name__ == '__main__':
     fn = sys.argv[1]
     print('Loading image...'),
