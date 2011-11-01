@@ -7,6 +7,12 @@ from imageUtil import getImageData, writeImageData, makeMask, normalize, jitterI
 from utilities import argpartition, partition, makeColors
 from main import convolve
 
+def tls(X):
+    """total least squares for 2 dimensions
+    """
+    u,s,v = nu.linalg.svd(X)
+    return nu.arctan2(v[0,1],v[1,1])/(2*nu.pi)
+
 class AgentPainter(object):
     def __init__(self,img):
         self.img = nu.array((255-img,255-img,255-img))
@@ -29,7 +35,7 @@ class AgentPainter(object):
             return False
         self.agents[agent] = available[0]
         self.paintSlots[available[0]] = True
-        self.paintStart(agent.point,self.colors[self.agents[agent]])
+        #self.paintStart(agent.point,self.colors[self.agents[agent]])
 
     def unregister(self,agent):
         if self.agents.has_key(agent):
@@ -38,80 +44,30 @@ class AgentPainter(object):
         else:
             sys.stderr.write('Warning, unknown agent')
         
-    def paintStart(self,coord,color):
-        if isinstance(coord,list):
-            if len(coord) > 1:
-                xx = [coord[0][0],coord[1][0]]
-                yy = [coord[0][1],coord[1][1]]
-                xx.sort()
-                yy.sort()
-                self.paintLine(xx[0],xx[1],yy[0],yy[1],color)
-            else:
-                self.paintLine(coord[0][0],coord[0][0],coord[0][1],coord[0][1],color)
-            return True
-        rectSize = 5
-        t = int(coord[0]-nu.floor(rectSize/2.))
-        b = int(coord[0]+nu.floor(rectSize/2.))
-        l = int(coord[1]-nu.floor(rectSize/2.))
-        r = int(coord[1]+nu.floor(rectSize/2.))
-        self.img[:,int(coord[0]),int(coord[1])] = color
-        for i,c in enumerate(color):
-            self.img[i,t:b,l] = c
-            self.img[i,t:b,r] = c
-            self.img[i,t,l:r] = c
-            self.img[i,b,l:r+1] = c
-
-    def paintLine(self,xmin,xmax,ymin,ymax,color):
-        rectSize = 5
-        t = int(xmin)
-        b = int(xmax)
-        l = int(ymin)
-        r = int(ymax)
-        #self.img[:,int(coord[0]),int(coord[1])] = color
-        for i,c in enumerate(color):
-            self.img[i,t:b,l] = c
-            self.img[i,t:b,r] = c
-            self.img[i,t,l:r] = c
-            self.img[i,b,l:r+1] = c
-
-    def paintRect(self,xmin,xmax,ymin,ymax,color):
-        rectSize = 5
-        t = int(xmin-nu.floor(rectSize/2.))
-        b = int(xmax+nu.floor(rectSize/2.))
-        l = int(ymin-nu.floor(rectSize/2.))
-        r = int(ymax+nu.floor(rectSize/2.))
-        #self.img[:,int(coord[0]),int(coord[1])] = color
-        for i,c in enumerate(color):
-            self.img[i,t:b,l] = c
-            self.img[i,t:b,r] = c
-            self.img[i,t,l:r] = c
-            self.img[i,b,l:r+1] = c
-
     def drawAgent(self,agent):
         if self.agents.has_key(agent):
             c = self.colors[self.agents[agent]]
             c1 = nu.maximum(0,c-50)
-            self.paintStart(agent.point,c)
+            #self.paintStart(agent.point,c)
             for p in agent.getTrajectory():
                 self.paint(p,c)
-            for pp in agent.points:
-                for p in pp:
-                    self.paint(p,c1)
-                    self.paint((p[0]-1,p[1]),c1)
-                    self.paint((p[0]+1,p[1]),c1)
+            for p in agent.points:
+                #for p in pp:
+                self.paint(p,c1)
+                self.paint((p[0]-1,p[1]),c1)
+                self.paint((p[0]+1,p[1]),c1)
         else:
             sys.stderr.write('Warning, unknown agent')
 
     def paint(self,coord,color):
-        #print('point',coord.img.shape)
+        #print('point',coord,img.shape)
         self.img[:,int(coord[0]),int(coord[1])] = color
 
 class Agent(object):
     targetAngleDeg = 0
     minScore = 0
     def __init__(self,xy):
-        self.point = xy
-        self.points = [(xy,)]
+        self.points = nu.array(xy).reshape((1,2))
         self.angle = self.targetAngleDeg
         self.score = 0
         self.adopted = True
@@ -120,7 +76,7 @@ class Agent(object):
     def __str__old(self):
         return 'Agent: point: {0}; angle: {1}; score: {2} age: {3}; points: {4}'.format(self.point,self.angle,self.score,self.age)
     def __str__(self):
-        return 'Agent: score: {0} age: {1}; points: {2}'.format(self.score,self.age,len(self.points))
+        return 'Agent: angle: {3}; score: {0} age: {1}; points: {2}'.format(self.score,self.age,len(self.points),self.angle)
     def tick(self):
         self.age += 1
         if self.adopted:
@@ -129,15 +85,67 @@ class Agent(object):
             self.score -= 1
         self.adopted = False
         return not self.died()
+    
+    def award(self,xy0,xy1=None):
+        #print('award ')
+        #print('points',self.points)
+        #print('point',xy0)
+        self.adopted = True
+        self.nadopted += 1
+        self.points = nu.vstack((self.points,xy0))
+        self.angle = (2*tls(self.points[:,(1,0)]-nu.mean(self.points[:,(1,0)])))%1
+        
+    def bid(self,xy0,xy1=None):
+        #angle = (nu.arctan2(*(xy-nu.mean(self.points,0)))%nu.pi)/nu.pi
+        a0 = nu.arctan2(*(xy0-nu.mean(self.points,0)))/nu.pi
+        e0 = self.evaluateAngle(a0)
+        #print('points',self.points)
+        #print('point',xy0)
+        #print('ae',a0,e0)
+        return e0
+
+    def evaluateAngle(self,a):
+        ad = nu.array([a,a%1])-self.angle
+        return ad[nu.argmin(nu.abs(ad))]
+
+ 
+    def bidOld(self,xy0,xy1=None):
+        a0 = self.getAngle(xy0)
+        e0 = self.evaluateAngle(a0)
+        if xy1 is None:
+            return e0
+        a1 = self.getAngle(xy1)
+        e1 = self.evaluateAngle(a1)
+        if a0 <= a1:
+            if e0 <= 0 and e1 >= 0:
+                return 0
+            else:
+                if nu.abs(e0) < nu.abs(e1):
+                    return e0
+                else:
+                    return e1
+        else:
+            if e1 <= 0 and e0 >= 0:
+                return 0
+            else:
+                if nu.abs(e0) < nu.abs(e1):
+                    return e0
+                else:
+                    return e1
+
     def getScore(self):
         return score
+
     def died(self):
         return self.score < Agent.minScore
 
     def getAngle(self,xy):
-        return nu.arctan2(*nu.abs(self.point-xy))/(2*nu.pi)
+        return nu.arctan2(*(self.point-xy))%nu.pi/nu.pi
         
     def getMeanPoints(self):
+        return self.points
+
+    def getMeanPointsOld(self):
         mp = nu.zeros((len(self.points),2))
         for i,p in enumerate(self.points):
             if len(p) > 1:
@@ -151,6 +159,7 @@ class Agent(object):
         N = mp.shape[0]
         dm = nu.zeros((N,N))
         print(mp)
+        #angles = []
         for i in range(N):
             for j in range(i):
                 a = mp[i,:]
@@ -164,10 +173,12 @@ class Agent(object):
                         se += (nu.sin(th_bc-th_ab)*nu.sum((c-b)**2)**.5)**2
                 dm[i,j] = (se/(N-2))**.5
                 dm[j,i] = (se/(N-2))**.5
-        #u,s,v = nu.linalg.svd(dm)
-        #nu.savetxt('/tmp/dm.txt',dm)
         l = cluster.hierarchy.linkage(spatial.distance.squareform(dm))
-        c = cluster.hierarchy.fcluster(l,nu.median(dm)/1.01,criterion='distance')
+        dm = dm[:,nu.argsort(dm[10,:])]
+        dm = dm[nu.argsort(dm[:,2]),:]
+        nu.savetxt('/tmp/dm.txt',dm)
+        maxDist = 7
+        c = cluster.hierarchy.fcluster(l,maxDist,criterion='distance')
         idict = argpartition(lambda x: x[0], nu.column_stack((c,nu.arange(len(c)))))
         kv = idict.items()
         print(c)
@@ -177,16 +188,27 @@ class Agent(object):
         winners = nu.where(c == winner)
         print('w',winners)
         print('l',losers)
-        #nu.savetxt('/tmp/u.txt',u)
-        #nu.savetxt('/tmp/s.txt',s)
-        #nu.savetxt('/tmp/v.txt',v)
-    #def getBestAngle(self,xy0,xy1=None):
+
+    def evaluateNew(self):
+        mp = self.getMeanPoints()
+        N = mp.shape[0]
+        dm = nu.zeros((N,N))
+        print(mp)
+        #angles = []
+        for i in range(N):
+            for j in range(i):
+                a = mp[i,:]
+                b = mp[j,:]
+                th_ab = nu.arctan2(*(b-a))
+                dm[i,j] = th_ab
+
     def getTrajectory(self):
         N = len(self.points)
         if N == 1:
-            return self.points[0]
-        points = nu.round(nu.array([x[0] if len(x) == 1 else nu.mean(nu.array(x),0) 
-                  for x in self.points])).astype(nu.int)
+            return self.points[0,:]
+        #points = nu.round(nu.array([x[0] if len(x) == 1 else nu.mean(nu.array(x),0) 
+        #          for x in self.points])).astype(nu.int)
+        points = self.points
         tr = []
         i = 0
         while i < N-1:
@@ -199,7 +221,7 @@ class Agent(object):
             i += 1
         return nu.vstack(tr)
 
-    def award(self,xy0,xy1=None):
+    def awardOld(self,xy0,xy1=None):
         self.adopted = True
         self.nadopted += 1
         if xy1 != None:
@@ -210,7 +232,7 @@ class Agent(object):
         if True:
             return True
 
-        bestAngle = nu.abs(self.bid(xy0,xy1))
+        bestAngle = self.bid(xy0,xy1)
         self.angle = ((self.nadopted-1)*self.angle+bestAngle)/self.nadopted
         if xy1 == None:
             newpoint = xy0
@@ -235,45 +257,15 @@ class Agent(object):
                 print('Error, dont know what to do')
         self.point = ((self.nadopted-1)*self.point+newpoint)/self.nadopted
         self.points.append(newpoint)
-
-    def evaluateAngle(self,a):
-        return a-nu.abs(self.angle%360.)
-      
-    def bid(self,xy0,xy1=None):
-        a0 = self.getAngle(xy0)
-        e0 = self.evaluateAngle(a0)
-        if xy1 is None:
-            return e0
-        a1 = self.getAngle(xy1)
-        e1 = self.evaluateAngle(a1)
-        if a0 <= a1:
-            if e0 <= 0 and e1 >= 0:
-                return 0
-            else:
-                if nu.abs(e0) < nu.abs(e1):
-                    return e0
-                else:
-                    return e1
-        else:
-            if e1 <= 0 and e0 >= 0:
-                return 0
-            else:
-                if nu.abs(e0) < nu.abs(e1):
-                    return e0
-                else:
-                    return e1
+     
                 
 class BarLineAgent(Agent):
-    #minAngleDeg = 87
-    #maxAngleDeg = 93
     targetAngleDeg = 90
     minScore = -10
     
 class StaffLineAgent(Agent):
-    #minAngleDeg = -1
-    #maxAngleDeg = 1
     targetAngleDeg = 0
-    minScore = -1
+    minScore = -5
         
 def getCrossings(v,agents,AgentType,ap,vert=None,horz=None):
     mindist = 1
@@ -296,7 +288,7 @@ def getCrossings(v,agents,AgentType,ap,vert=None,horz=None):
     #print('candidates',candidates)
     #print('agents',len(agents))
     unadopted = []
-    maxDeviation = 1/360.
+    maxDeviation = 3/360.
     for i,c in enumerate(candidates):
         if len(agents) == 0:
             unadopted.append(i)
@@ -320,7 +312,9 @@ def getCrossings(v,agents,AgentType,ap,vert=None,horz=None):
     agentsn = []
     for a in agents:
         alive = a.tick()
-        if alive:
+        print('angle',a.angle,a.points)
+        goodAngle = nu.abs(a.angle-a.targetAngleDeg/360.) < maxDeviation
+        if alive and goodAngle:
             agentsn.append(a)
         else:
             pass #ap.unregister(a)
@@ -348,7 +342,7 @@ def findStaffLines(img,fn):
     
     ap = AgentPainter(img)
     #for c in colorder[:int(lookatProportion*N)]:
-    for c in colorder[:20]:
+    for c in colorder[:100]:
         print('column',c)
         agents = getCrossings(img[:,c],agents,StaffLineAgent,ap,horz=c)
         print('agents',len(agents))
@@ -358,10 +352,10 @@ def findStaffLines(img,fn):
         for a in agents[:50]:
             print('{0}'.format(a))
     
-    k = 1
+    k = 10
     print(agents[k])
-    agents[k].evaluate()
-    for a in agents[k:k+1]:
+    #agents[k].evaluate()
+    for a in agents[0:k+1]:
         ap.register(a)
         ap.drawAgent(a)
     ap.writeImage(fn)
