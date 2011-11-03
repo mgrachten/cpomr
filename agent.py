@@ -78,12 +78,6 @@ class Agent(object):
         angleOK = nu.abs((self.angle*180-self.targetAngle+90)%180-90) <= self.maxAngleDev
         errorOK = self.error <= self.maxError
         successRateOK = self.score >= self.minScore
-        #print('dying?')
-        #print(self)
-        #print('angleOK',angleOK)
-        #print('errorOK',errorOK)
-        #print('successRateOK',successRateOK)
-        #return not angleOK #not all((angleOK,errorOK,successRateOK))
         return not all((angleOK,errorOK,successRateOK))
   
     def getIntersection(self,xy0,xy1):
