@@ -30,13 +30,30 @@ class Agent(object):
         self.score = 0
         self.adopted = True
         self.age = 0
-        #self.nadopted = 0
+        self.scorehist = []
 
-    #def evaluate(self):
-    #    return self.error, self.angle
-        
     def __str__(self):
-        return 'Agent: angle: {3:03f}; error: {0:03f} age: {1}; points: {2}; eval: {4}'.format(self.error,self.age,self.points.shape[0],self.angle,self.evaluate())
+        return 'Agent: angle: {3:03f}; error: {0:03f} age: {1}; points: {2}; score: {5}; eval: {4}'.format(self.error,self.age,self.points.shape[0],self.angle,self.evaluate(),self.score)
+
+    def mergeable(self,other):
+        e0 = getError(other.points-self.mean,self.angle)
+        e1 = getError(self.points-other.mean,other.angle)
+        e = (e0+e1)/2.0
+        #return e if e < self.maxError else nu.inf
+        return e
+
+    def merge(self,other):
+        self.points = nu.vstack((self.points,other.points))
+        self.mean = nu.mean(self.points,0)
+        self.angle = tls(self.points-self.mean)
+        self.error = getError(self.points-self.mean,self.angle)
+        #self.scorehist = nu.vstack((self.scorehist,other.scorehist))
+        self.scorehist = self.scorehist+other.scorehist
+        self.age = max(self.age,other.age)
+        self.score = self.score+other.score
+        
+    def getScorehist(self):
+        return nu.array(self.scorehist)
 
     def tick(self):
         self.age += 1
@@ -44,9 +61,19 @@ class Agent(object):
             self.score += 1
         else:
             self.score -= 1
+        self.scorehist.append((self.age,self.score))
         self.adopted = False
         return not self.died()
     
+    def toVector(self):
+        return nu.array((self.points.shape[0],
+                         self.mean[0],
+                         (self.angle+.5)%1-.5,
+                        self.error,
+                        self.score,
+                        self.age)
+                        )
+
     def died(self):
         angleOK = nu.abs((self.angle*180-self.targetAngle+90)%180-90) <= self.maxAngleDev
         errorOK = self.error <= self.maxError
@@ -56,6 +83,7 @@ class Agent(object):
         #print('angleOK',angleOK)
         #print('errorOK',errorOK)
         #print('successRateOK',successRateOK)
+        #return not angleOK #not all((angleOK,errorOK,successRateOK))
         return not all((angleOK,errorOK,successRateOK))
   
     def getIntersection(self,xy0,xy1):
