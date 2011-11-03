@@ -119,7 +119,7 @@ def getCrossings(v,oldagents,AgentType,ap,N,vert=None,horz=None):
         candidates = [tuple(data)]
     else:
         return agents
-    #print(vert)
+
     #print('protocandidates',candidates)
     if vert is not None:
         candidates = [[nu.array([vert,horz]) for horz in horzz] for horzz in candidates]
@@ -127,9 +127,6 @@ def getCrossings(v,oldagents,AgentType,ap,N,vert=None,horz=None):
         candidates = [[nu.array([vert,horz]) for vert in vertz] for vertz in candidates]
     else:
         print('error, need to specify vert or horz')
-    #print('candidates',len(candidates))
-    #print('candidates',candidates)
-    #print('agents',len(agents))
 
     unadopted = []
     bids = None
@@ -144,7 +141,6 @@ def getCrossings(v,oldagents,AgentType,ap,N,vert=None,horz=None):
         cidx = nu.argsort(nu.min(bids,1))
         adopters = set([])
         for i in cidx:
-            #print(bids[i,:])
             bestBidder = nu.argmin(bids[i,:])
             bestBet = bids[i,bestBidder]
             if bestBet <= agents[bestBidder].maxError and not bestBidder in adopters:
@@ -153,10 +149,11 @@ def getCrossings(v,oldagents,AgentType,ap,N,vert=None,horz=None):
             else:
                 unadopted.append(i)
     for i in unadopted:
-        if len(candidates[i]) > 1 and (candidates[i][-1][0]-candidates[i][0][0]) <= N/1000.:
+        if len(candidates[i]) >1 and (candidates[i][-1][0]-candidates[i][0][0]) <= N/1000.:
             # only add an agent if we are on a small section
             newagent = AgentType(nu.mean(nu.array(candidates[i]),0))
             agents.append(newagent)
+            
     
     return [a for a in agents if a.tick()]
 
@@ -174,6 +171,7 @@ def selectColumns(vsums,lookatProportion):
     idxm = nzidx[:bins*binSize].reshape((bins,binSize))
     for i in range(bins):
         idxm[i,:] = idxm[i,nu.argsort(vsums[idxm[i,:]])]
+
     columns = idxm.T.ravel()
     columns = nu.append(columns,nzidx[bins*binSize:])
     return columns[:int(N*lookatProportion)]
@@ -211,11 +209,10 @@ def mergeAgents(agents):
 
 
 def sortAgents(agents):
-    #agents = [a for a in agents if not all((a.error == 0,a.angle==a.targetAngle,a.points.shape[0]<10))]
+    agents.sort(key=lambda x: -x.score)
     N = len(agents)
-    #agents = nu.array(agentsl)
     scores = nu.array([a.score for a in agents])
-    scoreIdx = nu.argsort(scores)[::-1]
+    scoreIdx = nu.argsort(-scores)
     scores = scores[scoreIdx]
     #angles = nu.array([(a.angle-a.targetAngle+.5)%1-.5 for a in agents])[scoreIdx]
     k = 10
@@ -243,13 +240,14 @@ def findStaffLines(img,fn):
     N,M = img.shape
     lookatProportion = .04
     vsums = nu.sum(img,0)
+
     columns = selectColumns(vsums,lookatProportion)
     agents = []
+    
     ap = AgentPainter(img)
     for i,c in enumerate(columns):
-        #print('column',c)
         agentsnew = getCrossings(img[:,c],agents,StaffLineAgent,ap,N,horz=c)
-        #agentsnew.sort(key=lambda x: -x.score)
+
         if len(agents)> 1:
             agentsnew = mergeAgents(agentsnew)
 
@@ -267,19 +265,22 @@ def findStaffLines(img,fn):
             ap.paintVLine(c)
             ap.writeImage(fn.replace('.png','-{0:04d}-c{1}.png'.format(i,c)))
         
-        # don't delete!
+        # DON'T DELETE
         agents = agentsnew
 
-    #agents.sort(key=lambda x: -x.score)
     #nu.savetxt('/tmp/a.txt',nu.array([a.toVector() for a in agents]))
     #for i,a in enumerate(agents):
     #    print('{0} {1}'.format(i,a))
     #    nu.savetxt('/tmp/a{0:02d}.txt'.format(i),a.getScorehist())
-    print('columns processed',int(lookatProportion*N))
+    print('columns processed',lookatProportion*N)
     agents = sortAgents(agents)
+    j = 0
     for a in agents:
-        ap.register(a)
-        ap.drawAgent(a)
+        if a.points.shape[0] > 1:
+            print('{0} {1}'.format(j,a))
+            j += 1
+            ap.register(a)
+            ap.drawAgent(a)
     ap.writeImage(fn)
 
 if __name__ == '__main__':
@@ -295,4 +296,5 @@ if __name__ == '__main__':
     print('Done')
     bgThreshold = 100
     img[img< bgThreshold] = 0
+    #findStaffLines(img[1500:,:],fn)
     findStaffLines(img,fn)
