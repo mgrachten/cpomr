@@ -124,15 +124,6 @@ def sortAgents(agents):
     print('keeping',len(na),'agents')
     return na
 
-def assessLines(agents,N,M):
-    # check if 4 nn are equidistant for each line
-    meansAngles = nu.array([(a.mean[0],a.mean[1],((a.angle-a.targetAngle+.5)%1-.5)*nu.pi) for a in agents])
-    x = meansAngles[:,0]+(M/2-meansAngles[:,1])*nu.tan(meansAngles[:,2]*nu.pi)
-    nidx = nu.array([nu.argsort(nu.abs(x-xi))[:5] for xi in x])
-    xx = nu.array([nu.std(nu.diff(nu.sort(x[xi])))<1 for xi in nidx])
-    nu.savetxt('/tmp/x.txt',nu.column_stack((x,xx.astype(nu.int))))
-    #print(xx)
-
 def fitLines(agents,N,M):
     print(N,M,M/2)
     meansAngles = nu.array([(a.mean[0],a.mean[1],((a.angle-a.targetAngle+.5)%1-.5)*nu.pi) for a in agents])
@@ -184,27 +175,66 @@ def fitLines(agents,N,M):
         hits.append(etot)
     nu.savetxt('/tmp/h.txt',nu.column_stack((x,nu.array(hits))))
 
+def assessLines(agents,N,M,show=False):
+    # check if 4 nn are equidistant for each line
+    print(len(agents))
+    meansAngles = nu.array([(a.mean[0],a.mean[1],((a.angle-a.targetAngle+.5)%1-.5)*nu.pi) for a in agents])
+    x = meansAngles[:,0]+(M/2-meansAngles[:,1])*nu.tan(meansAngles[:,2]*nu.pi)
+    xs = nu.sort(x)
+    dxs = nu.diff(xs)
+    l0 = nu.median(dxs)
+    checkIdx = nu.ones(len(agents)-1,nu.bool)
+    checkIdx[nu.arange(5,len(agents),5)-1] = False
+    thr = l0/20.
+    if True:
+        return nu.std(dxs[checkIdx]) < thr
+
+    print(len(dxs),len(checkIdx))
+    #nu.savetxt('/tmp/x.txt',dxs)
+    print(xs)
+    print(nu.arange(5,len(agents),5)-1)
+    print(nu.nonzero(checkIdx)[0])
+    print(dxs[checkIdx])
+    print(nu.std(dxs[checkIdx]))
+    #nu.savetxt('/tmp/x.txt',xs)
+    nu.savetxt('/tmp/x.txt',nu.column_stack((xs[:-1],checkIdx,dxs)))
+    return nu.std(dxs[checkIdx]) < thr
+    #print(xx)
 
 def findStaffLines(img,fn):
     N,M = img.shape
-    lookatProportion = .04
+    lookatProportion = 1
     vsums = nu.sum(img,0)
 
     columns = selectColumns(vsums,lookatProportion)
     agents = []
     
     ap = AgentPainter(img)
-    draw = True
+    #draw = True
+    draw = False
+    taprev= []
     for i,c in enumerate(columns):
+        print('column',i)
         agentsnew = getCrossings(img[:,c],agents,StaffLineAgent,ap,N,horz=c)
 
         if len(agents)> 1:
             agentsnew = mergeAgents(agentsnew)
 
     
+        if len(agents)> 40:
+            #fitLines(agentsnew,N,M)
+            ta = sortAgents(agentsnew)
+            r = assessLines(ta,N,M,i==27)
+            if r:
+                ap.reset()
+                agents = ta#agentsnew[:]
+                break
+        else:
+            ta = agentsnew[:]
+
         if draw:
-            sagentsnew = set(agentsnew)
-            setagents = set(agents)
+            sagentsnew = set(ta)
+            setagents = set(taprev)
             born = sagentsnew.difference(setagents)
             died = setagents.difference(sagentsnew)
             ap.reset()
@@ -212,29 +242,24 @@ def findStaffLines(img,fn):
                 ap.register(a)
             for a in died:
                 ap.unregister(a)
-            for a in agentsnew:
+            for a in ta:
                 ap.drawAgent(a)
-            print('drew agents',len(agentsnew))
+            print('drew agents',len(ta))
             ap.paintVLine(c)
             f0,ext = os.path.splitext(fn)
             print(f0,ext)
             #ap.writeImage(fn.replace('.png','-{0:04d}-c{1}.png'.format(i,c)))
             ap.writeImage(f0+'-{0:04d}-c{1}'.format(i,c)+'.png')
         
-        if len(agents)> 20:
-            #fitLines(agentsnew,N,M)
-            assessLines(agentsnew,N,M)
-            sys.exit()
-
         # DON'T DELETE
         agents = agentsnew[:]
-
+        taprev = ta[:]
     #nu.savetxt('/tmp/a.txt',nu.array([a.toVector() for a in agents]))
     #for i,a in enumerate(agents):
     #    print('{0} {1}'.format(i,a))
     #    nu.savetxt('/tmp/a{0:02d}.txt'.format(i),a.getScorehist())
-    print('columns processed',lookatProportion*N)
-    agents = sortAgents(agents)
+    print('columns processed',int(lookatProportion*N))
+    #agents = sortAgents(agents)
     j = 0
     for a in agents:
         if a.points.shape[0] > 1:
