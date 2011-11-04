@@ -6,108 +6,8 @@ import numpy as nu
 from imageUtil import getImageData, writeImageData, makeMask, normalize, jitterImageEdges,getPattern
 from utilities import argpartition, partition, makeColors
 from main import convolve
-from agent import Agent
+from agent import Agent, AgentPainter
 
-
-class AgentPainter(object):
-    def __init__(self,img):
-        self.img = nu.array((255-img,255-img,255-img))
-        self.imgOrig = nu.array((255-img,255-img,255-img))
-        self.maxAgents = 300
-        self.colors = makeColors(self.maxAgents)
-        self.paintSlots = nu.zeros(self.maxAgents,nu.bool)
-        self.agents = {}
-
-    def writeImage(self,fn):
-        #print(nu.min(img),nu.max(img))
-        self.img = self.img.astype(nu.uint8)
-        fn = os.path.join('/tmp',os.path.splitext(os.path.basename(fn))[0]+'.png')
-        print(fn)
-        writeImageData(fn,self.img.shape[1:],self.img[0,:,:],self.img[1,:,:],self.img[2,:,:])
-
-    def register(self,agent):
-        available = nu.where(self.paintSlots==0)[0]
-        if len(available) < 1:
-            print('no paint slots available')
-            return False
-        self.agents[agent] = available[0]
-        self.paintSlots[available[0]] = True
-        #self.paintStart(agent.point,self.colors[self.agents[agent]])
-
-    def unregister(self,agent):
-        if self.agents.has_key(agent):
-            self.paintSlots[self.agents[agent]] = False
-            del self.agents[agent]
-        else:
-            sys.stderr.write('Warning, unknown agent\n')
-        
-    def reset(self):
-        self.img = self.imgOrig.copy()
-
-    def drawAgent(self,agent):
-        if self.agents.has_key(agent):
-            c = self.colors[self.agents[agent]]
-            c1 = nu.minimum(255,c+50)
-            c2 = nu.maximum(0,c-100)
-            #self.paintStart(agent.point,c)
-            #print(agent.getTrajectory())
-            #if agent.points.shape[0] > 1:
-            #    for p in agent.getTrajectory():
-            #        self.paint(p,c,.3)
-            #a.mean-nu.arange(0,self.img.shape[1])
-            N = self.img.shape[2]
-            xbegin = agent.mean[0]+(-agent.mean[1])*nu.tan(((agent.angle-agent.targetAngle+.5)%1-.5)*nu.pi)
-            xend = agent.mean[0]+(N-agent.mean[1])*nu.tan(((agent.angle-agent.targetAngle+.5)%1-.5)*nu.pi)
-            
-            dx = nu.abs(xend-xbegin)
-            dy = N
-            delta = max(dx,dy)+2
-            z = nu.round(nu.column_stack((nu.linspace(xbegin,xend,delta),
-                                          nu.linspace(0,N-1,delta)))).astype(nu.int)
-            for p in z:
-                try:
-                    alpha = min(1,max(.2,.5+float(agent.score)/agent.age))
-                    self.paint(p,c2,alpha)
-                except IndexError:
-                    print(p,img.shape[1:])
-                    
-            #print(img.shape)
-            #print('draw',agent.angle,agent.mean)
-            #print(z)
-            #print(agent.points)
-            self.paintRect(agent.points[0][0],agent.points[0][0],
-                           agent.points[0][1],agent.points[0][1],c)
-            for p in agent.points:
-                #for p in pp:
-                self.paint(p,c1)
-                if p[0]-1 >= 0:
-                    self.paint((p[0]-1,p[1]),c1)
-                if p[0]+1 < self.img.shape[0]:
-                    self.paint((p[0]+1,p[1]),c1)
-        else:
-            sys.stderr.write('Warning, unknown agent')
-
-    def paint(self,coord,color,alpha=1):
-        #print('point',coord,img.shape)
-        self.img[:,int(coord[0]),int(coord[1])] = (1-alpha)*self.img[:,int(coord[0]),int(coord[1])]+alpha*color
-
-    def paintVLine(self,y,alpha=.5):
-        self.img[:,:,y] = (1-alpha)*self.img[:,:,y]+alpha*0
-
-    def paintRect(self,xmin,xmax,ymin,ymax,color,alpha=.5):
-        rectSize = 10
-        N,M = self.img.shape[1:]
-        t = int(max(0,xmin-nu.floor(rectSize/2.)))
-        b = int(min(N-1,xmax+nu.floor(rectSize/2.)))
-        l = int(max(0,ymin-nu.floor(rectSize/2.)))
-        r = int(min(M-1,ymax+nu.floor(rectSize/2.)))
-        #self.img[:,:,int(ymin)] = (1-alpha)*self.img[:,:,int(ymin)]+alpha*0
-        #self.img[:,int(xmin),:] = (1-alpha)*self.img[:,int(xmin),:]+alpha*0
-        for i,c in enumerate(color):
-            self.img[i,t:b,l] = c
-            self.img[i,t:b,r] = c
-            self.img[i,t,l:r] = c
-            self.img[i,b,l:r+1] = c
 
 def getCrossings(v,oldagents,AgentType,ap,N,vert=None,horz=None):
     agents = oldagents[:]
@@ -207,7 +107,6 @@ def mergeAgents(agents):
             newagents.append(a)
     return newagents
 
-
 def sortAgents(agents):
     agents.sort(key=lambda x: -x.score)
     N = len(agents)
@@ -225,16 +124,66 @@ def sortAgents(agents):
     print('keeping',len(na),'agents')
     return na
 
+def assessLines(agents,N,M):
+    # check if 4 nn are equidistant for each line
+    meansAngles = nu.array([(a.mean[0],a.mean[1],((a.angle-a.targetAngle+.5)%1-.5)*nu.pi) for a in agents])
+    x = meansAngles[:,0]+(M/2-meansAngles[:,1])*nu.tan(meansAngles[:,2]*nu.pi)
+    nidx = nu.array([nu.argsort(nu.abs(x-xi))[:5] for xi in x])
+    xx = nu.array([nu.std(nu.diff(nu.sort(x[xi])))<1 for xi in nidx])
+    nu.savetxt('/tmp/x.txt',nu.column_stack((x,xx.astype(nu.int))))
+    #print(xx)
 
-def findPredominantNNdist(agents,K=10):
-    # NOT FINISHED
-    assert len(agents) > 10
-    xx = nu.array([a.mean[0] for a in agents[:K]])+1
-    for i in range(K):
-        dists = nu.abs(xx-xx[i])
-        nn = xx[nu.argsort(dists)[:10]]
-        assert nn[0] > 0
-        print('agent',i,nu.abs((nn/nn[0]+.5)%1-.5))
+def fitLines(agents,N,M):
+    print(N,M,M/2)
+    meansAngles = nu.array([(a.mean[0],a.mean[1],((a.angle-a.targetAngle+.5)%1-.5)*nu.pi) for a in agents])
+    x = meansAngles[:,0]+(M/2-meansAngles[:,1])*nu.tan(meansAngles[:,2]*nu.pi)
+    x = nu.sort(x)
+    #print(nu.column_stack((meansAngles,x)))
+    nu.savetxt('/tmp/x.txt',x)
+    nidx = nu.array([nu.argsort(nu.abs(x-xi))[1:] for xi in x])
+    nndist = nu.array([(xi-x[nu.argsort(nu.abs(x-xi))])[1:] for xi in x])
+    n0dist = nndist[:,1]
+    d0 = nu.median(nu.abs(n0dist))
+    nu.savetxt('/tmp/n0.txt',n0dist)
+    hits = []
+    for j,(ii,bm) in enumerate([(i,nu.abs(nndist[i,:]) < (nu.abs(n0dist[i])*2.5)) for i in range(len(n0dist))]):
+        l = nndist[ii,bm]
+        print(x[j],n0dist[j],l)
+        #print([(k/n0dist[j]+.5)%1-.5 for k in l])
+        y = nu.array([((nu.round(k/n0dist[j]))/1,(k/n0dist[j]+.5)%1-.5) for k in l])
+        y = y[nu.argsort(nu.abs(y[:,1]))]
+        print(y)
+        error = 0
+        missing = 0
+        partners = []
+        u = 0
+        for m in (-2,-1,1,2):
+            z = nu.where(y[:,0] == m)[0]
+            if len(z) == 0:
+                missing += 1
+            else:
+                partners.append(nidx[j,bm][u])
+                u +=1
+                error += nu.abs(y[z[0],1])
+        error = error/(4-missing)
+        #e1 = 1+(nu.abs(n0dist[j])-d0)**2
+        e1 = (1+nu.abs(1-nu.abs(n0dist[j])/d0))**2
+        e2 = (1+error)**2
+        e3 = 1 if missing < 2 else 2
+        print('e',error)
+        etot = (3.0/(e1+e2+e3))
+        print('p',partners,len(x))
+        pp = [x[j]]+[x[q] for q in partners]
+        pp.sort()
+        print('p',pp)
+        #print('p',x[bm][tuple(partners)])
+        #print('p',[x[p] for p in partners])
+        #print('p',[x[p] for p in partners])
+        print('e1,e2,e3',e1,e2,e3,etot)
+        #hits.append(.5 if etot >.5 else 0)
+        hits.append(etot)
+    nu.savetxt('/tmp/h.txt',nu.column_stack((x,nu.array(hits))))
+
 
 def findStaffLines(img,fn):
     N,M = img.shape
@@ -245,28 +194,40 @@ def findStaffLines(img,fn):
     agents = []
     
     ap = AgentPainter(img)
+    draw = True
     for i,c in enumerate(columns):
         agentsnew = getCrossings(img[:,c],agents,StaffLineAgent,ap,N,horz=c)
 
         if len(agents)> 1:
             agentsnew = mergeAgents(agentsnew)
 
-        draw = False
+    
         if draw:
-            born = set(agentsnew).difference(set(agents))
-            died = set(agents).difference(set(agentsnew))
+            sagentsnew = set(agentsnew)
+            setagents = set(agents)
+            born = sagentsnew.difference(setagents)
+            died = setagents.difference(sagentsnew)
             ap.reset()
             for a in born:
                 ap.register(a)
             for a in died:
                 ap.unregister(a)
-            for a in agents:
+            for a in agentsnew:
                 ap.drawAgent(a)
+            print('drew agents',len(agentsnew))
             ap.paintVLine(c)
-            ap.writeImage(fn.replace('.png','-{0:04d}-c{1}.png'.format(i,c)))
+            f0,ext = os.path.splitext(fn)
+            print(f0,ext)
+            #ap.writeImage(fn.replace('.png','-{0:04d}-c{1}.png'.format(i,c)))
+            ap.writeImage(f0+'-{0:04d}-c{1}'.format(i,c)+'.png')
         
+        if len(agents)> 20:
+            #fitLines(agentsnew,N,M)
+            assessLines(agentsnew,N,M)
+            sys.exit()
+
         # DON'T DELETE
-        agents = agentsnew
+        agents = agentsnew[:]
 
     #nu.savetxt('/tmp/a.txt',nu.array([a.toVector() for a in agents]))
     #for i,a in enumerate(agents):
