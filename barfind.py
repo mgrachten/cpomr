@@ -9,7 +9,7 @@ from main import convolve
 from agent import Agent, AgentPainter
 
 
-def getCrossings(v,oldagents,AgentType,ap,N,vert=None,horz=None):
+def getCrossings(v,oldagents,AgentType,ap,M,vert=None,horz=None):
     agents = oldagents[:]
     mindist = 1
     data = nu.nonzero(v)[0]
@@ -49,7 +49,7 @@ def getCrossings(v,oldagents,AgentType,ap,N,vert=None,horz=None):
             else:
                 unadopted.append(i)
     for i in unadopted:
-        if len(candidates[i]) >1 and (candidates[i][-1][0]-candidates[i][0][0]) <= N/1000.:
+        if len(candidates[i]) >1 and (candidates[i][-1][0]-candidates[i][0][0]) <= M/722.:
             # only add an agent if we are on a small section
             newagent = AgentType(nu.mean(nu.array(candidates[i]),0))
             agents.append(newagent)
@@ -65,7 +65,7 @@ class StaffLineAgent(Agent):
 
 def selectColumns(vsums,lookatProportion):
     N = len(vsums)
-    bins = 5
+    bins = 9
     nzidx = nu.nonzero(vsums)[0]
     binSize = int(nu.floor(len(nzidx)/bins))
     idxm = nzidx[:bins*binSize].reshape((bins,binSize))
@@ -210,12 +210,12 @@ def findStaffLines(img,fn):
     agents = []
     
     ap = AgentPainter(img)
-    #draw = True
-    draw = False
+    draw = True
+    #draw = False
     taprev= []
     for i,c in enumerate(columns):
         print('column',i)
-        agentsnew = getCrossings(img[:,c],agents,StaffLineAgent,ap,N,horz=c)
+        agentsnew = getCrossings(img[:,c],agents,StaffLineAgent,ap,M,horz=c)
 
         if len(agents)> 1:
             agentsnew = mergeAgents(agentsnew)
