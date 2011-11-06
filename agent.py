@@ -54,7 +54,7 @@ class Agent(object):
     #def getScorehist(self):
     #    return nu.array(self.scorehist)
 
-    def tick(self):
+    def tick(self,immortal=False):
         self.age += 1
         if self.adopted:
             self.score += 1
@@ -62,7 +62,10 @@ class Agent(object):
             self.score -= 1
         #self.scorehist.append((self.age,self.score))
         self.adopted = False
-        return not self.died()
+        if immortal:
+            return True
+        else:
+            return not self.died()
     
     def toVector(self):
         return nu.array((self.points.shape[0],
@@ -108,11 +111,6 @@ class Agent(object):
         x = b/(nu.tan(nu.pi*self.angle)-slope)
         return nu.array((slope*x+b,x))
     
-    #def evaluate(self):
-    #    angleDiff = nu.abs((self.angle-self.targetAngle/180.+.5)%1-.5)
-    #    v = (.01*self.age+self.points.shape[0]/(1.0+self.age))/(1+self.error+100*angleDiff)
-    #    return v
-
     def award(self,xy0,xy1=None):
         self.adopted = True
         if xy1 != None:

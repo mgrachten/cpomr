@@ -8,8 +8,7 @@ from utilities import argpartition, partition, makeColors
 from main import convolve
 from agent import Agent, AgentPainter
 
-
-def getCrossings(v,oldagents,AgentType,ap,M,vert=None,horz=None):
+def getCrossings(v,oldagents,AgentType,M,vert=None,horz=None,fixAgents=False):
     agents = oldagents[:]
     mindist = 1
     data = nu.nonzero(v)[0]
@@ -20,7 +19,6 @@ def getCrossings(v,oldagents,AgentType,ap,M,vert=None,horz=None):
     else:
         return agents
 
-    #print('protocandidates',candidates)
     if vert is not None:
         candidates = [[nu.array([vert,horz]) for horz in horzz] for horzz in candidates]
     elif horz is not None:
@@ -48,14 +46,17 @@ def getCrossings(v,oldagents,AgentType,ap,M,vert=None,horz=None):
                 adopters.add(bestBidder)
             else:
                 unadopted.append(i)
-    for i in unadopted:
-        if len(candidates[i]) >1 and (candidates[i][-1][0]-candidates[i][0][0]) <= M/722.:
-            # only add an agent if we are on a small section
-            newagent = AgentType(nu.mean(nu.array(candidates[i]),0))
-            agents.append(newagent)
-            
-    
-    return [a for a in agents if a.tick()]
+
+    if not fixAgents:
+        for i in unadopted:
+            if len(candidates[i]) >1 and (candidates[i][-1][0]-candidates[i][0][0]) <= M/200.:
+                # only add an agent if we are on a small section
+                newagent = AgentType(nu.mean(nu.array(candidates[i]),0))
+                agents.append(newagent)
+                
+    return [a for a in agents if a.tick(fixAgents)]
+
+
 
 class StaffLineAgent(Agent):
     targetAngle = 0 # in degrees
@@ -63,9 +64,8 @@ class StaffLineAgent(Agent):
     maxAngleDev = 2 # in degrees
     minScore = -5
 
-def selectColumns(vsums,lookatProportion):
+def selectColumns(vsums,bins):
     N = len(vsums)
-    bins = 9
     nzidx = nu.nonzero(vsums)[0]
     binSize = int(nu.floor(len(nzidx)/bins))
     idxm = nzidx[:bins*binSize].reshape((bins,binSize))
@@ -73,8 +73,12 @@ def selectColumns(vsums,lookatProportion):
         idxm[i,:] = idxm[i,nu.argsort(vsums[idxm[i,:]])]
 
     columns = idxm.T.ravel()
+    colBins = nu.array(range(bins)*binSize)
     columns = nu.append(columns,nzidx[bins*binSize:])
-    return columns[:int(N*lookatProportion)]
+    # incorrect, but mostly irrelevant:
+    colBins = nu.append(colBins,nu.zeros(len(nzidx)-bins*binSize))
+    assert len(columns) == len(colBins)
+    return columns,colBins
 
 def mergeAgents(agents):
     newagents = []
@@ -113,6 +117,11 @@ def sortAgents(agents):
     scores = nu.array([a.score for a in agents])
     scoreIdx = nu.argsort(-scores)
     scores = scores[scoreIdx]
+    if nu.min(scores) == nu.max(scores):
+        return agents
+        #print('scores')
+        #print(scores)
+
     #angles = nu.array([(a.angle-a.targetAngle+.5)%1-.5 for a in agents])[scoreIdx]
     k = 10
     meanScorePerSystem = [nu.mean(scores[i:i+k]) for i in range(0,N,k)]
@@ -123,57 +132,6 @@ def sortAgents(agents):
     na = agents[:k*nsystems]
     print('keeping',len(na),'agents')
     return na
-
-def fitLines(agents,N,M):
-    print(N,M,M/2)
-    meansAngles = nu.array([(a.mean[0],a.mean[1],((a.angle-a.targetAngle+.5)%1-.5)*nu.pi) for a in agents])
-    x = meansAngles[:,0]+(M/2-meansAngles[:,1])*nu.tan(meansAngles[:,2]*nu.pi)
-    x = nu.sort(x)
-    #print(nu.column_stack((meansAngles,x)))
-    nu.savetxt('/tmp/x.txt',x)
-    nidx = nu.array([nu.argsort(nu.abs(x-xi))[1:] for xi in x])
-    nndist = nu.array([(xi-x[nu.argsort(nu.abs(x-xi))])[1:] for xi in x])
-    n0dist = nndist[:,1]
-    d0 = nu.median(nu.abs(n0dist))
-    nu.savetxt('/tmp/n0.txt',n0dist)
-    hits = []
-    for j,(ii,bm) in enumerate([(i,nu.abs(nndist[i,:]) < (nu.abs(n0dist[i])*2.5)) for i in range(len(n0dist))]):
-        l = nndist[ii,bm]
-        print(x[j],n0dist[j],l)
-        #print([(k/n0dist[j]+.5)%1-.5 for k in l])
-        y = nu.array([((nu.round(k/n0dist[j]))/1,(k/n0dist[j]+.5)%1-.5) for k in l])
-        y = y[nu.argsort(nu.abs(y[:,1]))]
-        print(y)
-        error = 0
-        missing = 0
-        partners = []
-        u = 0
-        for m in (-2,-1,1,2):
-            z = nu.where(y[:,0] == m)[0]
-            if len(z) == 0:
-                missing += 1
-            else:
-                partners.append(nidx[j,bm][u])
-                u +=1
-                error += nu.abs(y[z[0],1])
-        error = error/(4-missing)
-        #e1 = 1+(nu.abs(n0dist[j])-d0)**2
-        e1 = (1+nu.abs(1-nu.abs(n0dist[j])/d0))**2
-        e2 = (1+error)**2
-        e3 = 1 if missing < 2 else 2
-        print('e',error)
-        etot = (3.0/(e1+e2+e3))
-        print('p',partners,len(x))
-        pp = [x[j]]+[x[q] for q in partners]
-        pp.sort()
-        print('p',pp)
-        #print('p',x[bm][tuple(partners)])
-        #print('p',[x[p] for p in partners])
-        #print('p',[x[p] for p in partners])
-        print('e1,e2,e3',e1,e2,e3,etot)
-        #hits.append(.5 if etot >.5 else 0)
-        hits.append(etot)
-    nu.savetxt('/tmp/h.txt',nu.column_stack((x,nu.array(hits))))
 
 def assessLines(agents,N,M,show=False):
     # check if 4 nn are equidistant for each line
@@ -201,26 +159,65 @@ def assessLines(agents,N,M,show=False):
     return nu.std(dxs[checkIdx]) < thr
     #print(xx)
 
+def finalizeAgents(agents,img,bins):
+    M = img.shape[1]
+    nsystems = len(agents)/10
+    print('found systems',nsystems)
+    agents.sort(key=lambda x: x.mean[0])
+    newagents = []
+
+    for n in range(nsystems):
+        margin = img.shape[0]/100.
+        #margin = 5
+        top = int(agents[n*10].mean[0]-margin)
+        bottom = int(agents[n*10+9].mean[0]+margin)
+        #print('system',n,top,bottom)
+        vsums = nu.sum(img[top:bottom,:],0)
+        columns,colBins = selectColumns(vsums,bins)
+        sysagents = agents[(n*10):(n*10)+10]
+        #print('top',top)
+        #print('old means')
+        for a in sysagents:
+            #print(a.mean)
+            a.mean[0] -= top
+            a.points[:,0] -= top
+        for c in columns[:50]:
+            sysagents = getCrossings(img[top:bottom,c],sysagents,StaffLineAgent,M,horz=c,fixAgents=True)
+        #print('new means')
+        for a in sysagents:
+            a.mean[0] += top
+            a.points[:,0] += top
+            #print(a.mean)
+        newagents.extend(sysagents)
+    return newagents
+
 def findStaffLines(img,fn):
     N,M = img.shape
-    lookatProportion = 1
+    
+    bins = 9
     vsums = nu.sum(img,0)
 
-    columns = selectColumns(vsums,lookatProportion)
+    columns,colBins = selectColumns(vsums,bins)
     agents = []
     
     ap = AgentPainter(img)
     draw = True
     #draw = False
     taprev= []
+    #finalStage = False
+    #finalCount = 0
     for i,c in enumerate(columns):
+        #if finalStage and nu.abs((colBins[i]+.5*(bins-1))%(bins-1)-.5*(bins-1)) > 1:
+        #    # in the final stage choose the outer bins for getting the angles right
+        #    pass #continue
         print('column',i)
-        agentsnew = getCrossings(img[:,c],agents,StaffLineAgent,ap,M,horz=c)
+        agentsnew = getCrossings(img[:,c],agents,StaffLineAgent,M,horz=c)
 
         if len(agents)> 1:
             agentsnew = mergeAgents(agentsnew)
 
     
+        #if len(agents)> 40 and not finalStage:
         if len(agents)> 40:
             #fitLines(agentsnew,N,M)
             ta = sortAgents(agentsnew)
@@ -228,9 +225,18 @@ def findStaffLines(img,fn):
             if r:
                 ap.reset()
                 agents = ta#agentsnew[:]
+                #finalStage = True
                 break
+
         else:
             ta = agentsnew[:]
+
+        # if finalStage:
+        #     # check angle similarity
+        #     # or count
+        #     finalCount += 1
+        #     if finalCount >= 35:
+        #        break
 
         if draw:
             sagentsnew = set(ta)
@@ -254,11 +260,12 @@ def findStaffLines(img,fn):
         # DON'T DELETE
         agents = agentsnew[:]
         taprev = ta[:]
+
+    agents = finalizeAgents(agents,img,bins)
     #nu.savetxt('/tmp/a.txt',nu.array([a.toVector() for a in agents]))
     #for i,a in enumerate(agents):
     #    print('{0} {1}'.format(i,a))
     #    nu.savetxt('/tmp/a{0:02d}.txt'.format(i),a.getScorehist())
-    print('columns processed',int(lookatProportion*N))
     #agents = sortAgents(agents)
     j = 0
     for a in agents:
@@ -280,7 +287,7 @@ if __name__ == '__main__':
         raise e
         sys.exit()#pass
     print('Done')
-    bgThreshold = 100
+    bgThreshold = 30
     img[img< bgThreshold] = 0
     #findStaffLines(img[1500:,:],fn)
     findStaffLines(img,fn)

@@ -84,7 +84,7 @@ def getPattern(filename,useMask=True,alphaAsMaskIfAvailable=True):
         img = avgChannels(fimg[:,:-1])
     else:
         img = avgChannels(fimg)
-    nu.savetxt('/tmp/i.txt',img.reshape(s))
+    #nu.savetxt('/tmp/i.txt',img.reshape(s))
     if useMask and not (alphaAsMaskIfAvailable and hasAlpha):
         # center around zero and 
         mask = makeMask(255-img.reshape(s)).reshape(img.shape)
