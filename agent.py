@@ -30,6 +30,7 @@ class Agent(object):
         self.score = 0
         self.adopted = True
         self.age = 0
+        self.lineThickness = 2
         #self.scorehist = []
 
     def __str__(self):
@@ -76,9 +77,15 @@ class Agent(object):
                         self.age))
 
     def died(self):
-        angleOK = nu.abs((self.angle*180-self.targetAngle+90)%180-90) <= self.maxAngleDev
+        #angleOK = nu.abs((self.angle*180-self.targetAngle+90)%180-90) <= self.maxAngleDev
+        angleOK = nu.abs((self.angle-self.targetAngle+.5)%1-.5) <= self.maxAngleDev
         errorOK = self.error <= self.maxError
         successRateOK = self.score >= self.minScore
+        print('agent',self.mean)
+        print(self.points)
+        print('angleOK',angleOK)
+        print('errorOK',errorOK)
+        print('successRateOK',successRateOK)
         return not all((angleOK,errorOK,successRateOK))
   
     def getIntersection(self,xy0,xy1):
@@ -120,7 +127,12 @@ class Agent(object):
                 xy = self.getIntersection(xy0,xy1)
             else:
                 xy = (xy0,xy1)[nu.argmin(nu.abs([error0,error1]))]
+            #if all(xy0 == xy1):
+            #    self.lineThickness = 1
+            #else:
+            self.lineThickness = min(self.lineThickness,nu.sum((xy0-xy1)**2)**.5)
         else:
+            self.lineThickness = 1
             xy = xy0
         self.points = nu.vstack((self.points,xy))
         self.mean = nu.mean(self.points,0)
@@ -143,30 +155,15 @@ class Agent(object):
         return nu.array([[nu.sin(self.angle*nu.pi),nu.cos(self.angle*nu.pi)],
                          [nu.cos(self.angle*nu.pi),-nu.sin(self.angle*nu.pi)]])
 
-    # def getTrajectory(self):
-    #     N = self.points.shape[0]
-    #     if N == 1:
-    #         return self.points[0,:]
-    #     points = self.points
-    #     tr = []
-    #     i = 0
-    #     while i < N-1:
-    #         dx = points[i+1,1]-points[i,1]
-    #         dy = points[i+1,0]-points[i,0]
-    #         delta = max(dx,dy)+2
-    #         z = nu.round(nu.column_stack((nu.linspace(points[i,0],points[i+1,0],delta),
-    #                                       nu.linspace(points[i,1],points[i+1,1],delta)))).astype(nu.int).reshape((-1,2))
-    #         tr.append(z)
-    #         i += 1
-    #     return nu.vstack(tr)
-
 
 class BarLineAgent(Agent):
-    targetAngle = 90
+    targetAngle = .5
     maxError = 5
+    maxAngleDev = 1 # in degrees
+    minScore = -1
     
 class StaffLineAgent(Agent):
-    targetAngle = 0 # in degrees
+    targetAngle = 0 
     maxError = 5
     maxAngleDev = 1 # in degrees
     minScore = -1
@@ -262,6 +259,8 @@ class AgentPainter(object):
 
     def paintVLine(self,y,alpha=.5):
         self.img[:,:,y] = (1-alpha)*self.img[:,:,y]+alpha*0
+    def paintHLine(self,x,alpha=.5):
+        self.img[:,x,:] = (1-alpha)*self.img[:,x,:]+alpha*0
 
     def paintRect(self,xmin,xmax,ymin,ymax,color,alpha=.5):
         rectSize = 10
