@@ -58,13 +58,13 @@ def verifyTop(img,endpoint,vm,hm,ap):
         ri = nu.round(normalize(img[int(endpoint[0]+i*vm),int(endpoint[1]-hm):int(endpoint[1]+hm)]))
         nz = nu.nonzero(ri-nu.min(ri))[0]
         results.append(len(nz) > 0 and nu.all(nz > 0) and nu.all(nz < len(ri)-1 ))
-        i = 9
-        ri = nu.round(normalize(img[int(endpoint[0]+i*vm),int(endpoint[1]-hm):int(endpoint[1]+hm)]))
-        nz = nu.nonzero(ri-nu.min(ri))[0]
-        results.append(len(nz) > 0 and nu.all(nz > 0) and nu.all(nz < len(ri)-1 ))
-        return len([x for x in results if x])/float(len(results))
+        #print(x0)
+        #print(x1)
+        #if ap:
+        #    #ap.paint(img[int(endpoint-vm),int(endpoint-hm):int(endpoint+hm)]
+        return all(results)
     except ValueError:
-        return 0
+        return False
 
 def verifyBot(img,endpoint,vm,hm,ap):
     if ap:
@@ -87,13 +87,9 @@ def verifyBot(img,endpoint,vm,hm,ap):
         ri = nu.round(normalize(img[int(endpoint[0]-i*vm),int(endpoint[1]-hm):int(endpoint[1]+hm)]))
         nz = nu.nonzero(ri-nu.min(ri))[0]
         results.append(len(nz) > 0 and nu.all(nz > 0) and nu.all(nz < len(ri)-1 ))
-        i = 9
-        ri = nu.round(normalize(img[int(endpoint[0]-i*vm),int(endpoint[1]-hm):int(endpoint[1]+hm)]))
-        nz = nu.nonzero(ri-nu.min(ri))[0]
-        results.append(len(nz) > 0 and nu.all(nz > 0) and nu.all(nz < len(ri)-1 ))
-        return len([x for x in results if x])/float(len(results))
+        return all(results)
     except ValueError:
-        return 0
+        return False
 
 def verifyBarLine(agent,img,topPoints,botPoints,staffDistance,ap=None):
     #print('intersection',agent.mean,agent.getAngle())
@@ -120,7 +116,7 @@ def verifyBarLine(agent,img,topPoints,botPoints,staffDistance,ap=None):
     x1 = verifyBot(img,bot,vmargin,hmargin,ap)
     #print('top',x0)
     #print('bot',x1)
-    return (x0 + x1)/2.0
+    return x0 and x1
     # print('top',img[int(top[0]),int(top[1])],1)
     # print('above top',img[int(top[0]-vmargin),int(top[1])],0)
     # print('below top',img[int(top[0]+vmargin),int(top[1])],1)
@@ -128,21 +124,14 @@ def verifyBarLine(agent,img,topPoints,botPoints,staffDistance,ap=None):
     # print('right below top',img[int(top[0]+vmargin),int(top[1]+hmargin)],0)
     #agent.getAngle()*nu.pi
 
-breakOff = []
+
 def assessBarlines(agents,img,topPoints,botPoints,staffDistance):
-    global breakOff
-    fits = nu.array([verifyBarLine(a,img,topPoints,botPoints,staffDistance) for a in agents])
+    passed = nu.array([verifyBarLine(a,img,topPoints,botPoints,staffDistance) for a in agents]).astype(nu.int)
     #print(len(agents),passed)
-    #nz = nu.nonzero(passed)[0]
+    nz = nu.nonzero(passed)[0]
     for i,a in enumerate(agents):
-        a.score += fits[i]
-    agents.sort(key=lambda x: -x.score)
-    scores = [x.score for x in agents]
-    i = nu.argmin(nu.diff(scores))
-    breakOff.append(i)
-    print('bo',breakOff)
-    if True:
-        return agents,False,i
+        a.score += 1 if passed[i] else -1
+        
     if len(nz) > 1:
         if nz[0] == 0 and nu.max(nu.diff(nz)) == 1:
             return agents,True,len(nz)
@@ -172,8 +161,8 @@ def findBarsInSystem(img,staffAgents,ap):
     ap.register(staffAgents[-1])
 
     taprev= []
-    draw = True
-    #draw = False
+    #draw = True
+    draw = False
     stop = False
     nbars = 0
     for i,r in enumerate(columns):
@@ -256,7 +245,7 @@ if __name__ == '__main__':
     ap = AgentPainter(img)
     ap.reset()
     for i,ba in enumerate(agents):
-        if i == 0:
+        if True:#i == 1:
             ap.register(ba[0])
             ap.register(ba[-1])
             ap.drawAgentGood(ba[0],-2000,2000)
