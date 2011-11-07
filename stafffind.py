@@ -209,9 +209,10 @@ def findStaffLines(img,fn):
         agents.extend(pagents)
     #agents = mergeAgents(agents)    
 
-    ap = AgentPainter(img)
     #draw = True
     draw = False
+    if draw:
+        ap = AgentPainter(img)
     taprev= []
 
     for i,c in enumerate(columns):
@@ -227,7 +228,8 @@ def findStaffLines(img,fn):
             ta = sortAgents(agentsnew)
             r = assessLines(ta,N,M,i==27)
             if r:
-                ap.reset()
+                if draw:
+                    ap.reset()
                 agents = ta
                 break
         else:
@@ -244,7 +246,7 @@ def findStaffLines(img,fn):
             for a in died:
                 ap.unregister(a)
             for a in ta:
-                ap.drawAgent(a)
+                ap.drawAgentGood(a)
             print('drew agents',len(ta))
             ap.paintVLine(c)
             f0,ext = os.path.splitext(fn)
@@ -257,14 +259,16 @@ def findStaffLines(img,fn):
         taprev = ta[:]
 
     agents = finalizeAgents(agents,img,bins)
-    #sys.exit()
+    if not draw:
+        return [agents[k*10:(k+1)*10] for k in range(len(agents)/10)]
+
     j = 0
     for a in agents:
         if a.points.shape[0] > 1:
             print('{0} {1}'.format(j,a))
             j += 1
             ap.register(a)
-            ap.drawAgent(a)
+            ap.drawAgentGood(a)
     ap.writeImage(fn)
     return [agents[k*10:(k+1)*10] for k in range(len(agents)/10)]
     #return agents

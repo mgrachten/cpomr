@@ -34,7 +34,7 @@ class Agent(object):
         #self.scorehist = []
 
     def __str__(self):
-        return 'Agent: angle: {3:03f}; error: {0:03f} age: {1}; points: {2}; score: {4}'.format(self.error,self.age,self.points.shape[0],self.angle,self.score)
+        return 'Agent: angle: {3:03f}; error: {0:03f} age: {1}; points: {2}; score: {4}; mean: {5}'.format(self.error,self.age,self.points.shape[0],self.angle,self.score,self.mean)
 
     def mergeable(self,other):
         e0 = getError(other.points-self.mean,self.angle)
@@ -42,6 +42,9 @@ class Agent(object):
         e = (e0+e1)/2.0
         #return e if e < self.maxError else nu.inf
         return e
+
+    def getAngle(self):
+        return self.targetAngle + (self.angle-self.targetAngle+.5)%1-.5
 
     def merge(self,other):
         self.points = nu.vstack((self.points,other.points))
@@ -81,24 +84,24 @@ class Agent(object):
         angleOK = nu.abs((self.angle-self.targetAngle+.5)%1-.5) <= self.maxAngleDev
         errorOK = self.error <= self.maxError
         successRateOK = self.score >= self.minScore
-        print('agent',self.mean)
-        print(self.points)
-        print('angleOK',angleOK)
-        print('errorOK',errorOK)
-        print('successRateOK',successRateOK)
+        #print('agent',self.mean)
+        #print(self.points)
+        #print('angleOK',angleOK)
+        #print('errorOK',errorOK)
+        #print('successRateOK',successRateOK)
         return not all((angleOK,errorOK,successRateOK))
   
     def getIntersection(self,xy0,xy1):
         # NB: x and y coordinates are in reverse order
         # because of image conventions: x = vertical, y = horizontal
-        
+        #print('intersection',xy0,xy1)
+        #print('mean,angle',self.mean,self.angle)
         dy,dx = nu.array(xy0-xy1,nu.float)
         # slope of new line
         slope = dy/dx
         ytilde,xtilde = xy0-self.mean
         # offset of new line
         b = (ytilde-slope*xtilde)
-
         # special case 1: parallel lines
         if slope == nu.tan(nu.pi*self.angle):
             print('parallel',slope)
@@ -116,9 +119,18 @@ class Agent(object):
             return None
 
         x = b/(nu.tan(nu.pi*self.angle)-slope)
-        return nu.array((slope*x+b,x))
+        #print(x)
+        r =  nu.array((slope*x+b,x))+self.mean
+        #print('r',r)
+        #sys.exit()
+        return r
     
     def award(self,xy0,xy1=None):
+        #print('award')
+        #print(self.mean)
+        #print(self.points)
+        #print(xy0,xy1)
+
         self.adopted = True
         if xy1 != None:
             error0 = nu.dot(xy0-self.mean,nu.array([nu.cos(self.angle*nu.pi),-nu.sin(self.angle*nu.pi)]))
@@ -134,6 +146,7 @@ class Agent(object):
         else:
             self.lineThickness = 1
             xy = xy0
+        #print('adding:',xy)
         self.points = nu.vstack((self.points,xy))
         self.mean = nu.mean(self.points,0)
         self.angle = tls(self.points-self.mean)
@@ -143,6 +156,11 @@ class Agent(object):
         # distance of xy0 to the current line (defined by self.angle)
         error0 = nu.dot(xy0-self.mean,nu.array([nu.cos(self.angle*nu.pi),-nu.sin(self.angle*nu.pi)]))
         #print('\tp0 error',xy0,error0)
+        #print('bid')
+        #print(self.mean)
+        #print(self.points)
+        #print(xy0)
+        #print(error0)
         if xy1 == None:
             return nu.abs(error0)
         error1 = nu.dot(xy1-self.mean,nu.array([nu.cos(self.angle*nu.pi),-nu.sin(self.angle*nu.pi)]))
@@ -167,11 +185,6 @@ class StaffLineAgent(Agent):
     maxError = 5
     maxAngleDev = 1 # in degrees
     minScore = -1
-
-
-
-
-
 
 class AgentPainter(object):
     def __init__(self,img):
@@ -208,6 +221,29 @@ class AgentPainter(object):
     def reset(self):
         self.img = self.imgOrig.copy()
 
+    def drawAgentGood(self,agent,rmin=-100,rmax=100):
+        if self.agents.has_key(agent):
+            #print('drawing')
+            #print(agent)
+            c = self.colors[self.agents[agent]]
+            c1 = nu.minimum(255,c+50)
+            c2 = nu.maximum(0,c-100)
+            M,N = self.img.shape[1:]
+            for r in range(rmin,rmax):
+                x = -r*nu.sin(agent.getAngle()*nu.pi)+agent.mean[0]
+                y = -r*nu.cos(agent.getAngle()*nu.pi)+agent.mean[1]
+                #print(r,agent.getAngle(),agent.mean,x,y)
+                #print(x,y)
+                if 0 <= x < M and 0 <= y < N:
+                    alpha = min(.8,max(.1,.5+float(agent.score)/agent.age))
+                    self.paint(nu.array((x,y)),c2,alpha)
+
+            self.paintRect(agent.points[0][0],agent.points[0][0],
+                           agent.points[0][1],agent.points[0][1],c)
+            for p in agent.points:
+                self.paint(p,c1)
+
+
     def drawAgent(self,agent):
         if self.agents.has_key(agent):
             c = self.colors[self.agents[agent]]
@@ -223,7 +259,7 @@ class AgentPainter(object):
             xbegin = agent.mean[0]+(-agent.mean[1])*nu.tan(((agent.angle-agent.targetAngle+.5)%1-.5)*nu.pi)
             xend = agent.mean[0]+(N-agent.mean[1])*nu.tan(((agent.angle-agent.targetAngle+.5)%1-.5)*nu.pi)
             if xbegin < 0 or xend >= M:
-                #print('undrawable agent',agent.mean,xbegin,xend,M,agent.angle)
+                print('undrawable agent',agent.mean,xbegin,xend,M,agent.angle)
                 return False
             dx = nu.abs(xend-xbegin)
             dy = N
@@ -232,7 +268,7 @@ class AgentPainter(object):
                                           nu.linspace(0,N-1,delta)))).astype(nu.int)
             for p in z:
                 try:
-                    alpha = min(1,max(.2,.5+float(agent.score)/agent.age))
+                    alpha = min(.8,max(.1,.5+float(agent.score)/agent.age))
                     self.paint(p,c2,alpha)
                 except IndexError:
                     print(p,img.shape[1:])
