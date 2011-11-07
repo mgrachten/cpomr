@@ -81,6 +81,8 @@ def selectColumns(vsums,bins):
     return columns,colBins
 
 def mergeAgents(agents):
+    if len(agents) < 3:
+        return agents
     newagents = []
     N = len(agents)
     pdist = []
@@ -115,8 +117,8 @@ def sortAgents(agents):
     agents.sort(key=lambda x: -x.score)
     N = len(agents)
     scores = nu.array([a.score for a in agents])
-    scoreIdx = nu.argsort(-scores)
-    scores = scores[scoreIdx]
+    #scoreIdx = nu.argsort(-scores)
+    #scores = scores[scoreIdx]
     if nu.min(scores) == nu.max(scores):
         return agents
         #print('scores')
@@ -143,7 +145,8 @@ def assessLines(agents,N,M,show=False):
     l0 = nu.median(dxs)
     checkIdx = nu.ones(len(agents)-1,nu.bool)
     checkIdx[nu.arange(5,len(agents),5)-1] = False
-    thr = l0/20.
+    #thr = l0/20.
+    thr = l0/10.
     if True:
         return nu.std(dxs[checkIdx]) < thr
 
@@ -191,6 +194,20 @@ def finalizeAgents(agents,img,bins):
         newagents.extend(sysagents)
     return newagents
 
+def findStaffLinesInPart(img,t,b,agentType,bins):
+    N,M = img.shape
+    vsums = nu.sum(img[t:b,:],0)
+    columns,colBins = selectColumns(vsums,bins)
+    agents = []
+    for i,c in enumerate(columns[:5]):
+        print('column',i)
+        agents = getCrossings(img[t:b,c],agents,agentType,M,horz=c)
+
+        if len(agents)> 1:
+            agents = mergeAgents(agents)
+    return agents
+    
+
 def findStaffLines(img,fn):
     N,M = img.shape
     
@@ -198,18 +215,28 @@ def findStaffLines(img,fn):
     vsums = nu.sum(img,0)
 
     columns,colBins = selectColumns(vsums,bins)
+
+    splitParts = 4
+    K = int(N/splitParts)
+    margin = 5
     agents = []
-    
+    for k in range(splitParts):
+        t = max(0,k*K-margin)
+        b = min(N,(k+1)*K+margin)
+        pagents = findStaffLinesInPart(img,t,b,StaffLineAgent,bins)
+        for a in pagents:
+            a.mean[0] += t
+            a.points[:,0] += t
+        agents.extend(pagents)
+    agents = mergeAgents(agents)    
+    #agents = []
+
     ap = AgentPainter(img)
-    draw = True
-    #draw = False
+    #draw = True
+    draw = False
     taprev= []
-    #finalStage = False
-    #finalCount = 0
+
     for i,c in enumerate(columns):
-        #if finalStage and nu.abs((colBins[i]+.5*(bins-1))%(bins-1)-.5*(bins-1)) > 1:
-        #    # in the final stage choose the outer bins for getting the angles right
-        #    pass #continue
         print('column',i)
         agentsnew = getCrossings(img[:,c],agents,StaffLineAgent,M,horz=c)
 
@@ -217,26 +244,16 @@ def findStaffLines(img,fn):
             agentsnew = mergeAgents(agentsnew)
 
     
-        #if len(agents)> 40 and not finalStage:
         if len(agents)> 40:
-            #fitLines(agentsnew,N,M)
             ta = sortAgents(agentsnew)
             r = assessLines(ta,N,M,i==27)
             if r:
                 ap.reset()
-                agents = ta#agentsnew[:]
-                #finalStage = True
+                agents = ta
                 break
 
         else:
             ta = agentsnew[:]
-
-        # if finalStage:
-        #     # check angle similarity
-        #     # or count
-        #     finalCount += 1
-        #     if finalCount >= 35:
-        #        break
 
         if draw:
             sagentsnew = set(ta)
@@ -262,11 +279,7 @@ def findStaffLines(img,fn):
         taprev = ta[:]
 
     agents = finalizeAgents(agents,img,bins)
-    #nu.savetxt('/tmp/a.txt',nu.array([a.toVector() for a in agents]))
-    #for i,a in enumerate(agents):
-    #    print('{0} {1}'.format(i,a))
-    #    nu.savetxt('/tmp/a{0:02d}.txt'.format(i),a.getScorehist())
-    #agents = sortAgents(agents)
+
     j = 0
     for a in agents:
         if a.points.shape[0] > 1:
