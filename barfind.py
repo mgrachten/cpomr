@@ -13,13 +13,13 @@ class BarLineAgent(Agent):
     # maxError=5 for images of approx 826x1169; seems to work also for images of 2550x3510
     # larger resolutions may need a higher value of maxError
     maxError = 2 # mean perpendicular distance of points to line (in pixels)
-    maxAngleDev = 2/180. # 
+    maxAngleDev = 3/180. # 
     minScore = -2
 
 def sortBarAgents(agents):
     agents.sort(key=lambda x: -x.score)
     scores = nu.array([x.score for x in agents])
-    print('seeing bar lines',nu.argmin(nu.diff(scores)))
+    print('seeing bar lines',nu.argmin(nu.diff(scores))+1)
     return agents
 
 def verifyEndpoint(img,endpoint,pv,ap):
@@ -125,7 +125,7 @@ def verifyBarLine(agent,img,topPoints,botPoints,staffDistance,ap=None):
     #agent.getAngle()*nu.pi
 
 
-def assessBarlines(agents,img,topPoints,botPoints,staffDistance):
+def assessBarlinesOld(agents,img,topPoints,botPoints,staffDistance):
     passed = nu.array([verifyBarLine(a,img,topPoints,botPoints,staffDistance) for a in agents]).astype(nu.int)
     #print(len(agents),passed)
     nz = nu.nonzero(passed)[0]
@@ -140,6 +140,11 @@ def assessBarlines(agents,img,topPoints,botPoints,staffDistance):
     else:
         return agents,False,len(nz)
 
+def assessBarlines(agents,img,topPoints,botPoints,staffDistance):
+    return agents,False,5
+    
+
+
 def findBarsInSystem(img,staffAgents,ap):
     N,M = img.shape
     top = int(staffAgents[0].mean[0])
@@ -147,7 +152,7 @@ def findBarsInSystem(img,staffAgents,ap):
     #topPoints = (staffAgents[0].points[0,:],staffAgents[0].points[1])
     #print('xx',staffAgents[0].mean[0],staffAgents[0].mean[1],nu.tan(staffAgents[0].getAngle()*nu.pi))
     topPoints = (staffAgents[0].mean,nu.array((staffAgents[0].mean[0]-staffAgents[0].mean[1]*nu.tan(staffAgents[0].getAngle()*nu.pi),0)))
-    print(topPoints)
+    #print(topPoints)
     #botPoints = (staffAgents[-1].points[0,:],staffAgents[-1].points[1])
     botPoints = (staffAgents[-1].mean,nu.array((staffAgents[-1].mean[0]-staffAgents[-1].mean[1]*nu.tan(staffAgents[-1].getAngle()*nu.pi),0)))
     bottom = int(staffAgents[-1].mean[0])
@@ -165,7 +170,7 @@ def findBarsInSystem(img,staffAgents,ap):
     draw = False
     stop = False
     nbars = 0
-    for i,r in enumerate(columns):
+    for i,r in enumerate(columns[:50]):
         print('row',i)
         agentsnew = getCrossings(img[r,:],agents,BarLineAgent,N,vert=r)
         #agents = agentsnew[:]
@@ -194,11 +199,11 @@ def findBarsInSystem(img,staffAgents,ap):
             for a in died:
                 ap.unregister(a)
             for a in ta:
-                print(a),
-                print(a.lineThickness),
+                print(a)
+                #print(a.lineThickness),
                 #print(a.points)
-                ap.drawAgentGood(a)
-                print(verifyBarLine(a,img,topPoints,botPoints,staffDistance,ap))
+                ap.drawAgentGood(a,-300,300)
+                #print(verifyBarLine(a,img,topPoints,botPoints,staffDistance,ap))
             print('drew agents',len(ta))
             ap.paintHLine(r)
             f0,ext = os.path.splitext(fn)
@@ -212,7 +217,6 @@ def findBarsInSystem(img,staffAgents,ap):
         
     for a in agents:
         print(a),
-        print(a.lineThickness),
         print(verifyBarLine(a,img,topPoints,botPoints,staffDistance,ap))
     #print('####################################################################################')
     #print('found {0} bars:'.format(nbars))
@@ -243,16 +247,23 @@ if __name__ == '__main__':
         with open(agentfn,'w') as f:
             pickle.dump(agents,f)
     ap = AgentPainter(img)
+    s = 3
+    bars = []
+    for i,ba in enumerate(agents):
+        if i == s:
+            bars.append(findBarsInSystem(img,ba,ap))
+        else:
+            bars.append([])
     ap.reset()
     for i,ba in enumerate(agents):
-        if True:#i == 1:
+        if i == s:
             ap.register(ba[0])
             ap.register(ba[-1])
             ap.drawAgentGood(ba[0],-2000,2000)
             ap.drawAgentGood(ba[-1],-2000,2000)
-            bars = findBarsInSystem(img,ba,ap)
+            #bars = findBarsInSystem(img,ba,ap)
             print('system')
-            for b in bars:
+            for b in bars[i]:
                 ap.register(b)
                 ap.drawAgentGood(b,-300,300)
             #print('that was for system',i)

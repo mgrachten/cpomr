@@ -63,7 +63,7 @@ class StaffLineAgent(Agent):
     # maxError=5 for images of approx 826x1169; seems to work also for images of 2550x3510
     # larger resolutions may need a higher value of maxError
     maxError = 5 # mean perpendicular distance of points to line (in pixels)
-    maxAngleDev = 2 # in degrees
+    maxAngleDev = .5/180. # in degrees
     minScore = -5
 
 def selectColumns(vsums,bins):
