@@ -6,10 +6,6 @@ import numpy as nu
 from imageUtil import getImageData, writeImageData, makeMask, normalize, jitterImageEdges,getPattern
 from utilities import argpartition, partition, makeColors
 
- 
-
-
-
 class AgentPainter(object):
     def __init__(self,img):
         self.img = nu.array((255-img,255-img,255-img))
@@ -64,6 +60,8 @@ class AgentPainter(object):
 
             self.paintRect(agent.points[0][0],agent.points[0][0],
                            agent.points[0][1],agent.points[0][1],c)
+            self.paintRect(agent.mean[0]+2,agent.mean[0]-2,
+                           agent.mean[1]+2,agent.mean[1]-2,c)
             for p in agent.points:
                 self.paint(p,c1)
 
@@ -159,7 +157,7 @@ class Agent(object):
     def __init__(self,xy0,xy1=None):
         if xy1 != None:
             xy = (xy0+xy1)/2.0
-            self.lineThickness = nu.array([nu.sum((xy0-xy1)**2)**.5])
+            self.lineThickness = nu.array([1+nu.sum((xy0-xy1)**2)**.5])
         else:
             xy = xy0
             self.lineThickness = nu.array([1.0])
@@ -175,9 +173,9 @@ class Agent(object):
     def __str__(self):
         return 'Agent: angle: {3:03f}; error: {0:03f} age: {1}; points: {2}; score: {4}; mean: {5}; thick: {6}'.format(self.error,self.age,self.points.shape[0],self.getAngle(),self.score,self.mean,self.getLineThickness())
 
-    def mergeable(self,other):
-        e0 = getError(other.points-self.mean,self.angle)
-        e1 = getError(self.points-other.mean,other.angle)
+    def mergeable(self,other,track=False):
+        e0 = getError(other.points-self.mean,self.getAngle())
+        e1 = getError(self.points-other.mean,other.getAngle())
         e = (e0+e1)/2.0
         #return e if e < self.maxError else nu.inf
         return e
@@ -194,7 +192,7 @@ class Agent(object):
 
         self.mean = nu.mean(self.points,0)
         self.angle = tls(self.points-self.mean)
-        self.error = getError(self.points-self.mean,self.angle)
+        self.error = getError(self.points-self.mean,self.getAngle())
         #self.scorehist = self.scorehist+other.scorehist
         self.age = max(self.age,other.age)
         self.score = self.score+other.score
@@ -270,23 +268,29 @@ class Agent(object):
         return r
     
     def award(self,xy0,xy1=None):
-        #print('award')
-        #print(self.mean)
-        #print(self.points)
-        #print(xy0,xy1)
-
         self.adopted = True
+        track = nu.abs(self.mean[1]-2160) < 1
         if xy1 != None:
             error0 = nu.dot(xy0-self.mean,nu.array([nu.cos(self.angle*nu.pi),-nu.sin(self.angle*nu.pi)]))
             error1 = nu.dot(xy1-self.mean,nu.array([nu.cos(self.angle*nu.pi),-nu.sin(self.angle*nu.pi)]))
+            lw = 1+nu.sum((xy0-xy1)**2)**.5
             if nu.sign(error0) != nu.sign(error1):
                 xy = self.getIntersection(xy0,xy1)
             else:
-                xy = (xy0,xy1)[nu.argmin(nu.abs([error0,error1]))]
-            #if all(xy0 == xy1):
-            #    self.lineThickness = 1
-            #else:
-            self.lineThickness = nu.append(self.lineThickness,nu.sum((xy0-xy1)**2)**.5)
+                if track:
+                    print('agent',self.mean)
+                    print('award')
+                    print('lw',lw)
+                    print('self lw',self.getLineThickness())
+                    print(xy0,xy1,lw,self.getLineThickness()+nu.std(self.lineThickness))
+                if lw <= self.getLineThickness() + nu.std(self.lineThickness):
+                    # it's most probably a pure segment of the line, store the mean
+                    xy = (xy0+xy1)/2.0
+                else:
+                    xy = (xy0,xy1)[nu.argmin(nu.abs([error0,error1]))]
+                if track:
+                    print('xy',xy)
+            self.lineThickness = nu.append(self.lineThickness,lw)
         else:
             self.lineThickness = nu.append(self.lineThickness,1.0)
             xy = xy0
@@ -294,8 +298,10 @@ class Agent(object):
         self.points = nu.vstack((self.points,xy))
         self.mean = nu.mean(self.points,0)
         self.angle = tls(self.points-self.mean)
-        self.error = getError(self.points-self.mean,self.angle)
-
+        self.error = getError(self.points-self.mean,self.getAngle())
+        if track:
+            print('agent',self.mean,'got:')
+            print(xy0,xy1,'error is now:',self.error)
     def _getAngle(self,xy):
         #print('attempt',0.67202086962263063,nu.arctan2(*((xy-self.mean)*nu.array([-1,1])))/nu.pi)
         #print('attempt',0.67202086962263063,((nu.arctan2(*(xy-self.mean))/nu.pi)+1)%1)
@@ -330,16 +336,17 @@ class Agent(object):
 
         #print('adjusting angle:',self.getAngle(),'to',angle)
         #print('cos angle, -sin angle:',nu.array([nu.cos(angle*nu.pi),-nu.sin(angle*nu.pi)]))
+        apenalty = nu.abs(self.getAngle()-angle)
         error0 = nu.dot(xy0-self.mean,nu.array([nu.cos(angle*nu.pi),-nu.sin(angle*nu.pi)]))
         #print('error0',error0)
         if xy1 == None:
-            return nu.abs(error0)
+            return nu.abs(error0)+apenalty
         error1 = nu.dot(xy1-self.mean,nu.array([nu.cos(angle*nu.pi),-nu.sin(angle*nu.pi)]))
         #print('error1',error1)
         if nu.sign(error0) != nu.sign(error1):
-            return 0.0
+            return 0.0+apenalty
         else:
-            return min(nu.abs(error0),nu.abs(error1))
+            return min(nu.abs(error0),nu.abs(error1))+apenalty
         
     def getRotMatrix(self):
         return nu.array([[nu.sin(self.getAngle()*nu.pi),nu.cos(self.getAngle()*nu.pi)],
@@ -363,8 +370,26 @@ class StaffLineAgent(Agent):
     minScore = -1
 
 if __name__ == '__main__':
-    x1 = nu.array([10.0,10])
-    x2a = nu.array([5,13])
+    #high
+    x01 = nu.array([200.0,200])
+    x11 = nu.array([200.0,205])
+    #low
+    x00 = nu.array([400.0,200])
+    x10 = nu.array([400.0,200])
+
+    a0 = BarLineAgent(x00)
+    a0.award(x01)
+    a1 = BarLineAgent(x10)
+    a1.award(x00)
+    a2 = BarLineAgent(x00)
+    a2.award(x01)
+    a2.award(x10)
+    a2.award(x11)
+    print(a0.mergeable(a1))
+    print(a0)
+    print(a1)
+    print(a2)
+    sys.exit()
     print(nu.arctan2(*(x1-x2a))/nu.pi,2/180.)
     x2b = nu.array([5,14])
     #x2a = nu.array([15,10])
@@ -374,8 +399,6 @@ if __name__ == '__main__':
     x3b = nu.array([-5,-1])
     #xy = nu.vstack((x1,x2))
 
-    a = BarLineAgent(x1)
-    print(a)
     #print(a._getAngle(x2b))
     #print(a._getClosestAngle(a._getAngle(x2b)))
     b = a.bid(x2a,x2b)
