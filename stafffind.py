@@ -27,19 +27,23 @@ def getCrossings(v,oldagents,AgentType,M,vert=None,horz=None,fixAgents=False):
 
     unadopted = []
     bids = None
+    angles = [a.getAngle() for a in agents]
+    predominantAngle = nu.median(angles[:10])
+    anglePens = nu.abs(angles-predominantAngle)+1
     if len(agents) == 0:
         unadopted.extend(range(len(candidates)))
     else:
         print('agents, candidates',len(agents),len(candidates))
         bids = nu.zeros((len(candidates),len(agents)))
+        
         for i,c in enumerate(candidates):
-            bids[i,:] = [nu.abs(a.bid(*c)) for a in agents]
-
+            bids[i,:] = nu.array([nu.abs(a.bid(*c)) for a in agents])*anglePens
+            
         cidx = nu.argsort(nu.min(bids,1))
         adopters = set([])
         for i in cidx:
             bestBidder = nu.argmin(bids[i,:])
-            bestBet = bids[i,bestBidder]
+            bestBet = bids[i,bestBidder]/anglePens[bestBidder]
             if bestBet <= agents[bestBidder].maxError and not bestBidder in adopters:
                 agents[bestBidder].award(*candidates[i])
                 adopters.add(bestBidder)
@@ -48,7 +52,7 @@ def getCrossings(v,oldagents,AgentType,M,vert=None,horz=None,fixAgents=False):
 
     if not fixAgents:
         for i in unadopted:
-            if len(candidates[i]) >1 and (candidates[i][-1][0]-candidates[i][0][0]) <= M/200.:
+            if len(candidates[i]) >1 and (candidates[i][-1][0]-candidates[i][0][0]) <= M/50.:
                 # only add an agent if we are on a small section
                 newagent = AgentType(nu.mean(nu.array(candidates[i]),0))
                 agents.append(newagent)
@@ -62,8 +66,8 @@ class StaffLineAgent(Agent):
     # good values (empirically established):
     # maxError=5 for images of approx 826x1169; seems to work also for images of 2550x3510
     # larger resolutions may need a higher value of maxError
-    maxError = 5 # mean perpendicular distance of points to line (in pixels)
-    maxAngleDev = .5/180. # in degrees
+    maxError = 10 # mean perpendicular distance of points to line (in pixels)
+    maxAngleDev = 3/180. # in degrees
     minScore = -5
 
 def selectColumns(vsums,bins):
@@ -96,9 +100,20 @@ def mergeAgents(agents):
             else:
                 cAngle = (nu.arctan2(*(agents[i].mean-agents[j].mean))%nu.pi)/nu.pi
                 # fast check: are means in positions likely for merge?
-                if ((cAngle-agents[i].targetAngle+.5)%1-.5) < agents[i].maxAngleDev/360.:
+                track = 2147 < agents[i].mean[1] < 2155 and 2147 < agents[j].mean[1] < 2155
+                if track:
+                    print('merge')
+                    print(agents[i])
+                    print(agents[j])
+                    print('cangle',cAngle)
+                    print(((cAngle-agents[i].targetAngle+.5)%1-.5),agents[i].maxAngleDev)
+                    print(((cAngle-agents[i].targetAngle+.5)%1-.5),agents[i].maxAngleDev)
+                #if ((cAngle-agents[i].targetAngle+.5)%1-.5) < agents[i].maxAngleDev:
+                if nu.abs(cAngle-agents[i].targetAngle) < agents[i].maxAngleDev:
                     # yes, do further check
-                    pdist.append(agents[i].mergeable(agents[j]))
+                    if track:
+                        print('passed angle check, continuing')
+                    pdist.append(agents[i].mergeable(agents[j],track))
                 else:
                     # no, exclude
                     pdist.append(agents[i].maxError+1)
@@ -195,7 +210,10 @@ def findStaffLines(img,fn):
     columns,colBins = selectColumns(vsums,bins)
 
     splitParts = 5
-    K = int(N/splitParts)
+    try:
+        K = int(N/splitParts)
+    except ZeroDivisionError:
+        K = 1
     agents = []
     seenCols = set([])
     for k in range(splitParts):
@@ -213,31 +231,38 @@ def findStaffLines(img,fn):
     draw = False
     if draw:
         ap = AgentPainter(img)
-    taprev= []
+        for a in agents:
+            ap.register(a)
+
+    #taprev= []
 
     for i,c in enumerate(columns):
-        if c in seenCols:
+        if False: #c in seenCols:
             continue
         print('column',i)
         agentsnew = getCrossings(img[:,c],agents,StaffLineAgent,M,horz=c)
 
         if len(agentsnew)> 1:
             agentsnew = mergeAgents(agentsnew)
-    
-        if len(agentsnew)> 40:
-            ta = sortAgents(agentsnew)
-            r = assessLines(ta,N,M,i==27)
+
+        if i > 10 and len(agentsnew)> 10:
+            agentsnew = sortAgents(agentsnew[:])
+            r = assessLines(agentsnew,N,M,i==27)
+            #r = True
             if r:
                 if draw:
                     ap.reset()
-                agents = ta
+                agents = agentsnew
                 break
-        else:
-            ta = agentsnew[:]
+
+        print('agents')
+        for j,a in enumerate(sorted(sorted(agentsnew,key=lambda x: x.mean[0]),key=lambda x: -x.score)):
+            print(j),
+            print(a)
 
         if draw:
-            sagentsnew = set(ta)
-            setagents = set(taprev)
+            sagentsnew = set(agentsnew)
+            setagents = set(agents)
             born = sagentsnew.difference(setagents)
             died = setagents.difference(sagentsnew)
             ap.reset()
@@ -245,9 +270,9 @@ def findStaffLines(img,fn):
                 ap.register(a)
             for a in died:
                 ap.unregister(a)
-            for a in ta:
-                ap.drawAgentGood(a)
-            print('drew agents',len(ta))
+            for a in agentsnew:
+                ap.drawAgentGood(a,-3000,3000)
+            print('drew agents',len(agentsnew))
             ap.paintVLine(c)
             f0,ext = os.path.splitext(fn)
             print(f0,ext)
@@ -256,7 +281,6 @@ def findStaffLines(img,fn):
         
         # DON'T DELETE
         agents = agentsnew[:]
-        taprev = ta[:]
 
     agents = finalizeAgents(agents,img,bins)
     if not draw:
@@ -284,7 +308,7 @@ if __name__ == '__main__':
         raise e
         sys.exit()#pass
     print('Done')
-    bgThreshold = 30
+    bgThreshold = 10
     img[img< bgThreshold] = 0
     #findStaffLines(img[1500:,:],fn)
     agentfn = os.path.join('/tmp/',os.path.splitext(os.path.basename(fn))[0]+'.agents')
