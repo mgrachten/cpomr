@@ -169,6 +169,8 @@ class Agent(object):
         self.score = 0
         self.adopted = True
         self.age = 0
+        self.id = str(self.__hash__())
+        self.offspring = 0
         #self.scorehist = []
 
     def clone(self):
@@ -180,10 +182,15 @@ class Agent(object):
         clone.mean = self.mean
         clone.angle = self.angle
         clone.lineThickness = self.lineThickness[:]
+        if self.offspring == 0:
+            clone.id = self.id
+        else:
+            clone.id = '{0}_{1:02d}'.format(self.id,self.offspring)
+        self.offspring += 1
         return clone
 
     def __str__(self):
-        return 'Agent: angle: {3:03f}; error: {0:03f} age: {1}; points: {2}; score: {4}; mean: {5}; thick: {6}'.format(self.error,self.age,self.points.shape[0],self.getAngle(),self.score,self.mean,self.getLineThickness())
+        return 'Agent: {7}; angle: {3:03f}; error: {0:03f} age: {1}; points: {2}; score: {4}; mean: {5}; thick: {6}'.format(self.error,self.age,self.points.shape[0],self.getAngle(),self.score,self.mean,self.getLineThickness(),self.id)
 
     def mergeable(self,other,track=False):
         e0 = getError(other.points-self.mean,self.getAngle())
@@ -221,10 +228,18 @@ class Agent(object):
         #self.scorehist = self.scorehist+other.scorehist
         self.age = max(self.age,other.age)
         self.score = self.score+other.score
+        cp = os.path.commonprefix([self.id,other.id]).split('_')
+        self.offspring = 0
+        if len(cp) > 1:
+            self.id = '_'.join(cp[:-1])
+        #else:
+        #    self.id = '_'.join(cp[:-1])
+            
     #def getScorehist(self):
     #    return nu.array(self.scorehist)
 
     def tick(self,immortal=False):
+        self.offspring = 0
         self.age += 1
         if self.adopted:
             self.score += 1
@@ -256,7 +271,10 @@ class Agent(object):
         #print('angleOK',angleOK)
         #print('errorOK',errorOK)
         #print('successRateOK',successRateOK)
-        return not all((angleOK,errorOK,successRateOK))
+        r = not all((angleOK,errorOK,successRateOK))
+        if r:
+            print('Died: {0}; angleOK: {1}; errorOK: {2}, scoreOK: {3}'.format(self,angleOK,errorOK,successRateOK))
+        return r
   
     def getIntersection(self,xy0,xy1):
         # NB: x and y coordinates are in reverse order

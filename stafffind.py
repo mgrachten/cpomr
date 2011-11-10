@@ -263,8 +263,8 @@ def findStaffLines(img,fn):
         agents.extend(pagents)
     #agents = mergeAgents(agents)    
 
-    #draw = True
-    draw = False
+    draw = True
+    #draw = False
     if draw:
         ap = AgentPainter(img)
         for a in agents:

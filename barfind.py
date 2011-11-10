@@ -5,6 +5,7 @@ import numpy as nu
 from stafffind import findStaffLines,selectColumns,getCrossings,mergeAgents
 from imageUtil import getPattern,normalize
 from agent import Agent,AgentPainter
+from angleEstimation import angleEstimator
 
 class BarLineAgent(Agent):
     targetAngle = .5 # in rad/(2*pi), for example .5 is vertical
@@ -154,8 +155,11 @@ if __name__ == '__main__':
         sys.exit()#pass
     print('Done')
     bgThreshold = 20
+    #img = img[:825,:]
     img[img< bgThreshold] = 0
     img[img>= bgThreshold] = 255
+    angleEstimator(img)
+    sys.exit()
     agentfn = os.path.join('/tmp/',os.path.splitext(os.path.basename(fn))[0]+'.agents')
     try:
         with open(agentfn,'r') as f:
