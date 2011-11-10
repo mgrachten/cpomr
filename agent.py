@@ -5,6 +5,7 @@ from scipy import signal,cluster,spatial
 import numpy as nu
 from imageUtil import getImageData, writeImageData, makeMask, normalize, jitterImageEdges,getPattern
 from utilities import argpartition, partition, makeColors
+from copy import deepcopy
 
 class AgentPainter(object):
     def __init__(self,img):
@@ -170,6 +171,17 @@ class Agent(object):
         self.age = 0
         #self.scorehist = []
 
+    def clone(self):
+        clone = type(self)(nu.array((0,0)))
+        clone.age = self.age
+        clone.error = self.error
+        clone.points = self.points
+        clone.score = self.score
+        clone.mean = self.mean
+        clone.angle = self.angle
+        clone.lineThickness = self.lineThickness[:]
+        return clone
+
     def __str__(self):
         return 'Agent: angle: {3:03f}; error: {0:03f} age: {1}; points: {2}; score: {4}; mean: {5}; thick: {6}'.format(self.error,self.age,self.points.shape[0],self.getAngle(),self.score,self.mean,self.getLineThickness())
 
@@ -177,6 +189,9 @@ class Agent(object):
         e0 = getError(other.points-self.mean,self.getAngle())
         e1 = getError(self.points-other.mean,other.getAngle())
         e = (e0+e1)/2.0
+        if track:
+            print('errors')
+            print(e0,e1,e)
         #return e if e < self.maxError else nu.inf
         return e
 
@@ -186,10 +201,20 @@ class Agent(object):
     def getAngle(self):
         return self.targetAngle + (self.angle-self.targetAngle+.5)%1-.5
 
-    def merge(self,other):
-        self.points = nu.vstack((self.points,other.points))
-        self.lineThickness = nu.append(self.lineThickness,other.lineThickness)
+    def merge(self,other,track=False):
+        #self.points = nu.vstack((self.points,other.points))
+        if track:
+            print(self.points)
+            print(other.points)
+        self.points = nu.array(tuple(set([tuple(y) for y in nu.vstack((self.points,other.points))])))
 
+        if track:
+            print(self.points)
+
+        self.lineThickness = nu.append(self.lineThickness,other.lineThickness)
+        if track:
+            print('merge: self, other, new mean')
+            print(self.mean,other.mean,nu.mean(self.points,0))
         self.mean = nu.mean(self.points,0)
         self.angle = tls(self.points-self.mean)
         self.error = getError(self.points-self.mean,self.getAngle())

@@ -30,6 +30,7 @@ def getCrossings(v,oldagents,AgentType,M,vert=None,horz=None,fixAgents=False):
     angles = [a.getAngle() for a in agents]
     predominantAngle = nu.median(angles[:10])
     anglePens = nu.abs(angles-predominantAngle)+1
+    newagents =[]
     if len(agents) == 0:
         unadopted.extend(range(len(candidates)))
     else:
@@ -44,21 +45,22 @@ def getCrossings(v,oldagents,AgentType,M,vert=None,horz=None,fixAgents=False):
         for i in cidx:
             bestBidder = nu.argmin(bids[i,:])
             bestBet = bids[i,bestBidder]/anglePens[bestBidder]
-            if bestBet <= agents[bestBidder].maxError and not bestBidder in adopters:
-                agents[bestBidder].award(*candidates[i])
+            if bestBet <= agents[bestBidder].maxError:
+                aclone = agents[bestBidder].clone()
+                aclone.award(*candidates[i])
                 adopters.add(bestBidder)
+                newagents.append(aclone)
             else:
                 unadopted.append(i)
-
+        newagents.extend([agents[x] for x in set(range(len(agents))).difference(adopters)])
     if not fixAgents:
         for i in unadopted:
             if len(candidates[i]) >1 and (candidates[i][-1][0]-candidates[i][0][0]) <= M/50.:
                 # only add an agent if we are on a small section
                 newagent = AgentType(nu.mean(nu.array(candidates[i]),0))
-                agents.append(newagent)
+                newagents.append(newagent)
                 
-    return [a for a in agents if a.tick(fixAgents)]
-
+    return [a for a in newagents if a.tick(fixAgents)]
 
 class StaffLineAgent(Agent):
     targetAngle = 0 # in degrees
@@ -67,8 +69,8 @@ class StaffLineAgent(Agent):
     # maxError=5 for images of approx 826x1169; seems to work also for images of 2550x3510
     # larger resolutions may need a higher value of maxError
     maxError = 10 # mean perpendicular distance of points to line (in pixels)
-    maxAngleDev = 3/180. # in degrees
-    minScore = -5
+    maxAngleDev = 2/180. # in degrees
+    minScore = -2
 
 def selectColumns(vsums,bins):
     N = len(vsums)
@@ -98,9 +100,10 @@ def mergeAgents(agents):
             if agents[i].points.shape[0] < 2 or agents[j].points.shape[0] < 2:
                 pdist.append(agents[i].maxError+1)
             else:
-                cAngle = (nu.arctan2(*(agents[i].mean-agents[j].mean))%nu.pi)/nu.pi
+                #cAngle = (nu.arctan2(*(agents[i].mean-agents[j].mean))%nu.pi)/nu.pi
+                cAngle = ((nu.arctan2(*(agents[i].mean-agents[j].mean))/nu.pi)+1)%1
                 # fast check: are means in positions likely for merge?
-                track = 2147 < agents[i].mean[1] < 2155 and 2147 < agents[j].mean[1] < 2155
+                track = False #2807 < agents[i].mean[0] < 2812 and 2807 < agents[j].mean[0] < 2812
                 if track:
                     print('merge')
                     print(agents[i])
@@ -108,11 +111,12 @@ def mergeAgents(agents):
                     print('cangle',cAngle)
                     print(((cAngle-agents[i].targetAngle+.5)%1-.5),agents[i].maxAngleDev)
                     print(((cAngle-agents[i].targetAngle+.5)%1-.5),agents[i].maxAngleDev)
-                #if ((cAngle-agents[i].targetAngle+.5)%1-.5) < agents[i].maxAngleDev:
-                if nu.abs(cAngle-agents[i].targetAngle) < agents[i].maxAngleDev:
+                if True: #((cAngle-agents[i].targetAngle+.5)%1-.5) < agents[i].maxAngleDev:
+                #if nu.abs(cAngle-agents[i].targetAngle) < agents[i].maxAngleDev:
                     # yes, do further check
                     if track:
                         print('passed angle check, continuing')
+                        print('max error',agents[i].maxError)
                     pdist.append(agents[i].mergeable(agents[j],track))
                 else:
                     # no, exclude
@@ -127,7 +131,8 @@ def mergeAgents(agents):
         else:
             a = agents[v[0]]
             for i in v[1:]:
-                a.merge(agents[i])
+                track = False#2807 < a.mean[0] < 2812 and 2807 < agents[i].mean[0] < 2812
+                a.merge(agents[i],track)
             newagents.append(a)
     return newagents
 
@@ -161,7 +166,7 @@ def assessLines(agents,N,M,show=False):
     thr = l0/10.
     return nu.std(dxs[checkIdx]) < thr
 
-def finalizeAgents(agents,img,bins):
+def finalizeAgents(agents,img,bins,fn,ap=None):
     M = img.shape[1]
     nsystems = len(agents)/10
     print('found systems',nsystems)
@@ -179,12 +184,43 @@ def finalizeAgents(agents,img,bins):
         for a in sysagents:
             a.mean[0] -= top
             a.points[:,0] -= top
-        for c in columns[:50]:
+        if ap != None and n == 3:
+            for a in sysagents:
+                ap.register(a)
+        for i,c in enumerate(columns[:50]):
+            oldsysagents = sysagents[:]
             sysagents = getCrossings(img[top:bottom,c],sysagents,StaffLineAgent,M,horz=c,fixAgents=True)
+            sysagents = mergeAgents(sysagents)
+
+            if ap != None and n == 3:
+                sagentsnew = set(sysagents)
+                setagents = set(oldsysagents)
+                born = sagentsnew.difference(setagents)
+                died = setagents.difference(sagentsnew)
+                ap.reset()
+                for a in born:
+                    ap.register(a)
+                for a in died:
+                    ap.unregister(a)
+                for a in sysagents:
+                    a.mean[0] += top
+                    a.points[:,0] += top
+                    ap.drawAgentGood(a,-3000,3000)
+                    a.mean[0] -= top
+                    a.points[:,0] -= top
+                print('drew agents',len(sysagents))
+                ap.paintVLine(c)
+                f0,ext = os.path.splitext(fn)
+                print(f0,ext)
+                #ap.writeImage(fn.replace('.png','-{0:04d}-c{1}.png'.format(i,c)))
+                ap.writeImage(f0+'-sys{2}-{0:04d}-c{1}'.format(n*1000+i,c,n)+'.png')
+    
         for a in sysagents:
             a.mean[0] += top
             a.points[:,0] += top
         newagents.extend(sysagents)
+
+        
     return newagents
 
 def findStaffLinesInPart(img,t,b,agentType,bins):
@@ -245,20 +281,24 @@ def findStaffLines(img,fn):
         if len(agentsnew)> 1:
             agentsnew = mergeAgents(agentsnew)
 
-        if i > 10 and len(agentsnew)> 10:
+        if i > 50 and len(agentsnew)> 10:
             agentsnew = sortAgents(agentsnew[:])
+            print('agents')
+            for j,a in enumerate(sorted(sorted(agentsnew,key=lambda x: x.mean[0]),key=lambda x: -x.score)):
+                print(j),
+                print(a)
             r = assessLines(agentsnew,N,M,i==27)
             #r = True
             if r:
                 if draw:
                     ap.reset()
-                agents = agentsnew
+                agents = agentsnew[:]
                 break
-
-        print('agents')
-        for j,a in enumerate(sorted(sorted(agentsnew,key=lambda x: x.mean[0]),key=lambda x: -x.score)):
-            print(j),
-            print(a)
+        else:
+            print('agents')
+            for j,a in enumerate(sorted(sorted(agentsnew,key=lambda x: x.mean[0]),key=lambda x: -x.score)):
+                print(j),
+                print(a)
 
         if draw:
             sagentsnew = set(agentsnew)
@@ -282,9 +322,14 @@ def findStaffLines(img,fn):
         # DON'T DELETE
         agents = agentsnew[:]
 
-    agents = finalizeAgents(agents,img,bins)
+    agents = finalizeAgents(agents,img,bins,fn,ap if draw else None)
     if not draw:
-        return [agents[k*10:(k+1)*10] for k in range(len(agents)/10)]
+        aa = [agents[k*10:(k+1)*10] for k in range(len(agents)/10)]
+        for x,ab in enumerate(aa):
+            print('staff',x)
+            for a in ab:
+                print(a.mean)
+        return aa
 
     j = 0
     for a in agents:
