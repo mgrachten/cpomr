@@ -29,7 +29,6 @@ def getCrossings(v,oldagents,AgentType,M,vert=None,horz=None,fixAgents=False):
     unadopted = []
     bids = None
     angles = [a.getAngle() for a in agents]
-    print('angles',angles)
     predominantAngle = nu.median(angles[:10])
     anglePens = nu.abs(angles-predominantAngle)+1
     newagents =[]
@@ -389,14 +388,35 @@ class VerticalSegment(object):
         agents = []
         #print(nu.sum(self.getVSums()))
         cols = selectColumns(self.getVSums(),self.colGroups)[0]
-        StaffAgent = makeAgentClass(targetAngle=self.getAngle(),
+        StaffAgent = makeAgentClass(targetAngle=-self.getAngle(),
                                     maxAngleDev=.1,
                                     maxError=10,
-                                    minScore=-2)
+                                    minScore=-2,
+                                    offset=self.top)
+        draw = True
+        f0 = os.path.splitext(self.scrImage.fn)[0]
+        print('default angle for this staff',self.getAngle())
         for i,c in enumerate(cols):
             agentsnew = getCrossings(self.getImgSegment()[:,c],agents,StaffAgent,
-                                     self.scrImage.getImg().shape[1],horz=c)
-            print(agentsnew)
+                                     self.scrImage.getWidth(),horz=c)
+            if len(agentsnew) > 1:
+                agentsnew = mergeAgents(agentsnew)
+            
+            #if i > 100:
+            #    draw = True
+            agents = agentsnew
+            if draw:
+                self.scrImage.ap.reset()
+                self.scrImage.ap.paintVLine(c)
+
+            for a in agents:
+                print(a)
+                if draw:
+                    if not self.scrImage.ap.isRegistered(a):
+                        self.scrImage.ap.register(a)
+                    self.scrImage.ap.drawAgentGood(a,-3000,3000)
+            if draw:
+                self.scrImage.ap.writeImage(f0+'-{0:04d}-c{1}'.format(i,c)+'.png')
 
     def getImgSegment(self):
         return self.scrImage.getImg()[self.top:self.bottom,:]
@@ -434,15 +454,32 @@ class VerticalSegment(object):
             self.maxAngle+i*2.0*self.maxAngle/self.nAngleBins
 
 class ScoreImage(object):
-    def __init__(self,img):
-        self.img = img
-        self.N,self.M = self.img.shape
+    def __init__(self,fn):
+        self.fn = fn
         self.typicalNrOfSystemPerPage = 6
         self.maxAngle = 2/180.
         self.nAnglebins = 600
         self.colGroups = 11
+        self.bgThreshold = 20
+        self.ap = AgentPainter(self.getImg())
+        
+    @getter
     def getImg(self):
-        return self.img
+        print('Loading image...'),
+        sys.stdout.flush()
+        try:
+            img = 255-getPattern(self.fn,False,False)
+        except IOError as e: 
+            print('problem')
+            raise e
+        print('Done')
+        img[img< self.bgThreshold] = 0
+        return img
+
+    def getWidth(self):
+        return self.getImg().shape[1]
+    def getHeight(self):
+        return self.getImg().shape[0]
 
     @getter
     def getHSums(self):
@@ -450,10 +487,10 @@ class ScoreImage(object):
 
     @getter
     def getVSegments(self):
-        K = int(self.N/(2*self.typicalNrOfSystemPerPage))+1
+        K = int(self.getHeight()/(2*self.typicalNrOfSystemPerPage))+1
         sh = smooth(self.getHSums(),K)
         #nu.savetxt('/tmp/vh1.txt',nu.column_stack((self.getHSums(),sh)))
-        segBoundaries = nu.append(0,nu.append(findValleys(sh),self.N))
+        segBoundaries = nu.append(0,nu.append(findValleys(sh),self.getHeight()))
         vsegments = []
         for i in range(len(segBoundaries)-1):
             vsegments.append(VerticalSegment(self,segBoundaries[i],segBoundaries[i+1],
@@ -474,21 +511,11 @@ class ScoreImage(object):
             
 if __name__ == '__main__':
     fn = sys.argv[1]
-    print('Loading image...'),
-    sys.stdout.flush()
-    try:
-        img = 255-getPattern(fn,False,False)
-    except IOError as e: 
-        print('problem')
-        raise e
-        sys.exit()#pass
-    print('Done')
-    bgThreshold = 20
-    img[img< bgThreshold] = 0
+
     #img[img>= bgThreshold] = 255
 
     #findStaffLines(img[1500:,:],fn)
-    si = ScoreImage(img)
+    si = ScoreImage(fn)
     for vs in si.getVSegments()[:1]:
         #print(180*vs.getAngle())
         vs.getStaffLines()

@@ -23,6 +23,9 @@ class AgentPainter(object):
         print(fn)
         writeImageData(fn,self.img.shape[1:],self.img[0,:,:],self.img[1,:,:],self.img[2,:,:])
 
+    def isRegistered(self,agent):
+        return self.agents.has_key(agent)
+        
     def register(self,agent):
         available = nu.where(self.paintSlots==0)[0]
         if len(available) < 1:
@@ -51,19 +54,19 @@ class AgentPainter(object):
             c2 = nu.maximum(0,c-100)
             M,N = self.img.shape[1:]
             for r in range(rmin,rmax):
-                x = -r*nu.sin(agent.getAngle()*nu.pi)+agent.mean[0]
-                y = -r*nu.cos(agent.getAngle()*nu.pi)+agent.mean[1]
-                #print(r,agent.getAngle(),agent.mean,x,y)
+                x = -r*nu.sin(agent.getAngle()*nu.pi)+agent.getDrawMean()[0]
+                y = -r*nu.cos(agent.getAngle()*nu.pi)+agent.getDrawMean()[1]
+                #print(r,agent.getAngle(),agent.getDrawMean(),x,y)
                 #print(x,y)
                 if 0 <= x < M and 0 <= y < N:
                     alpha = min(.8,max(.1,.5+float(agent.score)/agent.age))
                     self.paint(nu.array((x,y)),c2,alpha)
 
-            self.paintRect(agent.points[0][0],agent.points[0][0],
-                           agent.points[0][1],agent.points[0][1],c)
-            self.paintRect(agent.mean[0]+2,agent.mean[0]-2,
-                           agent.mean[1]+2,agent.mean[1]-2,c)
-            for p in agent.points:
+            self.paintRect(agent.getDrawPoints()[0][0],agent.getDrawPoints()[0][0],
+                           agent.getDrawPoints()[0][1],agent.getDrawPoints()[0][1],c)
+            self.paintRect(agent.getDrawMean()[0]+2,agent.getDrawMean()[0]-2,
+                           agent.getDrawMean()[1]+2,agent.getDrawMean()[1]-2,c)
+            for p in agent.getDrawPoints():
                 self.paint(p,c1)
 
 
@@ -77,12 +80,12 @@ class AgentPainter(object):
             #if agent.points.shape[0] > 1:
             #    for p in agent.getTrajectory():
             #        self.paint(p,c,.3)
-            #a.mean-nu.arange(0,self.img.shape[1])
+            #a.getDrawMean()-nu.arange(0,self.img.shape[1])
             M,N = self.img.shape[1:]
-            xbegin = agent.mean[0]+(-agent.mean[1])*nu.tan(((agent.angle-agent.targetAngle+.5)%1-.5)*nu.pi)
-            xend = agent.mean[0]+(N-agent.mean[1])*nu.tan(((agent.angle-agent.targetAngle+.5)%1-.5)*nu.pi)
+            xbegin = agent.getDrawMean()[0]+(-agent.getDrawMean()[1])*nu.tan(((agent.angle-agent.targetAngle+.5)%1-.5)*nu.pi)
+            xend = agent.getDrawMean()[0]+(N-agent.getDrawMean()[1])*nu.tan(((agent.angle-agent.targetAngle+.5)%1-.5)*nu.pi)
             if xbegin < 0 or xend >= M:
-                print('undrawable agent',agent.mean,xbegin,xend,M,agent.angle)
+                print('undrawable agent',agent.getDrawMean(),xbegin,xend,M,agent.angle)
                 return False
             dx = nu.abs(xend-xbegin)
             dy = N
@@ -97,12 +100,12 @@ class AgentPainter(object):
                     print(p,img.shape[1:])
                     
             #print(img.shape)
-            #print('draw',agent.angle,agent.mean)
+            #print('draw',agent.angle,agent.getDrawMean())
             #print(z)
-            #print(agent.points)
-            self.paintRect(agent.points[0][0],agent.points[0][0],
-                           agent.points[0][1],agent.points[0][1],c)
-            for p in agent.points:
+            #print(agent.getDrawPoints())
+            self.paintRect(agent.getDrawPoints()[0][0],agent.getDrawPoints()[0][0],
+                           agent.getDrawPoints()[0][1],agent.getDrawPoints()[0][1],c)
+            for p in agent.getDrawPoints():
                 #for p in pp:
                 self.paint(p,c1)
                 if p[0]-1 >= 0:
@@ -136,9 +139,6 @@ class AgentPainter(object):
             self.img[i,t,l:r] = c
             self.img[i,b,l:r+1] = c
 
-
-
-
 def tls(X):
     """total least squares for 2 dimensions
     """
@@ -150,12 +150,13 @@ def tls(X):
 def getError(x,a):
     return nu.sum(nu.dot(x,nu.array([nu.cos(a*nu.pi),-nu.sin(a*nu.pi)]).T)**2)**.5
 
-def makeAgentClass(targetAngle,maxAngleDev,maxError,minScore):
+def makeAgentClass(targetAngle,maxAngleDev,maxError,minScore,offset=0):
     class CustomAgent(Agent): pass
     CustomAgent.targetAngle = targetAngle
     CustomAgent.maxError = maxError
     CustomAgent.maxAngleDev = maxAngleDev
     CustomAgent.minScore = minScore
+    CustomAgent.offset = offset
     return CustomAgent
 
 class Agent(object):
@@ -189,6 +190,7 @@ class Agent(object):
         clone.score = self.score
         clone.mean = self.mean
         clone.angle = self.angle
+        clone.offset = self.offset
         clone.lineThickness = self.lineThickness[:]
         if self.offspring == 0:
             clone.id = self.id
@@ -215,6 +217,12 @@ class Agent(object):
 
     def getAngle(self):
         return self.targetAngle + (self.angle-self.targetAngle+.5)%1-.5
+        #return self.targetAngle + self.angle
+
+    def getDrawPoints(self):
+        return self.points+nu.array([self.offset,0])
+    def getDrawMean(self):
+        return self.mean+nu.array([self.offset,0])
 
     def merge(self,other,track=False):
         #self.points = nu.vstack((self.points,other.points))
@@ -353,9 +361,8 @@ class Agent(object):
         if track:
             print('agent',self.mean,'got:')
             print(xy0,xy1,'error is now:',self.error)
+
     def _getAngle(self,xy):
-        #print('attempt',0.67202086962263063,nu.arctan2(*((xy-self.mean)*nu.array([-1,1])))/nu.pi)
-        #print('attempt',0.67202086962263063,((nu.arctan2(*(xy-self.mean))/nu.pi)+1)%1)
         #return -nu.arctan2(*(xy-self.mean))/nu.pi
         return ((nu.arctan2(*(xy-self.mean))/nu.pi)+1)%1
 
