@@ -29,7 +29,7 @@ def getCrossings(v,oldagents,AgentType,M,vert=None,horz=None,fixAgents=False):
     unadopted = []
     bids = None
     angles = [a.getAngle() for a in agents]
-    print(angles)
+    print('angles',angles)
     predominantAngle = nu.median(angles[:10])
     anglePens = nu.abs(angles-predominantAngle)+1
     newagents =[]
@@ -394,7 +394,7 @@ class VerticalSegment(object):
                                     maxError=10,
                                     minScore=-2)
         for i,c in enumerate(cols):
-            agentsnew = getCrossings(self.getImgSegment(),agents,StaffAgent,
+            agentsnew = getCrossings(self.getImgSegment()[:,c],agents,StaffAgent,
                                      self.scrImage.getImg().shape[1],horz=c)
             print(agentsnew)
 
