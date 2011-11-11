@@ -290,6 +290,8 @@ class Agent(object):
         r = not all((angleOK,errorOK,successRateOK))
         if r:
             print('Died: {0}; angleOK: {1}; errorOK: {2}, scoreOK: {3}'.format(self,angleOK,errorOK,successRateOK))
+            print('a,ta',self.getAngle(),self.targetAngle)
+            print('adev,maxadev',nu.abs(self.getAngle()-self.targetAngle),self.maxAngleDev)
         return r
   
     def getIntersection(self,xy0,xy1):
@@ -381,20 +383,20 @@ class Agent(object):
                 xyp1 = xy1
             aa0 = self._getAngle(xy0)
             aa1 = self._getAngle(xyp1)
-            a0 = self._getClosestAngle(aa0)
-            a1 = self._getClosestAngle(aa1)
-            #print('xy0 xyp1',xy0,xyp1)
-            #print('aa0 aa1',aa0,aa1)
-            #print('a0 a1',a0,a1)
-            #print('selfangle',self.getAngle())
-            angle = nu.sort([a1,a0,self.getAngle()])[1]
+            # this doesn't make sense
+            # because the angle after adding the point will be 
+            # larger than a0 or a1
+            #a0 = self._getClosestAngle(aa0)
+            #a1 = self._getClosestAngle(aa1)
+            #angle = nu.sort([a1,a0,self.getAngle()])[1]
+            angle = nu.sort([aa1,aa0,self.getAngle()])[1]
         else:
             angle = self.getAngle()
             #angle = self.angle
 
         #print('adjusting angle:',self.getAngle(),'to',angle)
         #print('cos angle, -sin angle:',nu.array([nu.cos(angle*nu.pi),-nu.sin(angle*nu.pi)]))
-        apenalty = nu.abs(self.getAngle()-angle)
+        apenalty = 0#nu.abs(self.targetAngle-angle)
         error0 = nu.dot(xy0-self.mean,nu.array([nu.cos(angle*nu.pi),-nu.sin(angle*nu.pi)]))
         #print('error0',error0)
         if xy1 == None:

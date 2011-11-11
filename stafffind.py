@@ -60,7 +60,61 @@ def getCrossings(v,oldagents,AgentType,M,vert=None,horz=None,fixAgents=False):
                 # only add an agent if we are on a small section
                 newagent = AgentType(nu.mean(nu.array(candidates[i]),0))
                 newagents.append(newagent)
-                
+            else:
+                pass #print('ignoring candidate',candidates[i],len(candidates[i]) >1,(candidates[i][-1][0]-candidates[i][0][0]) <= M/50.)
+
+    return [a for a in newagents if a.tick(fixAgents)]
+
+def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False):
+    data = nu.nonzero(v)[0]
+    if len(data) > 1:
+        candidates = [tuple(x) if len(x)==1 else (x[0],x[-1]) for x in 
+                      nu.split(data,nu.nonzero(nu.diff(data)>1)[0]+1)]
+    elif len(data) == 1:
+        candidates = [tuple(data)]
+    else:
+        return agents
+    print('candidates',candidates)
+    if vert is not None:
+        candidates = [[nu.array([vert,horz]) for horz in horzz] for horzz in candidates]
+    elif horz is not None:
+        candidates = [[nu.array([vert,horz]) for vert in vertz] for vertz in candidates]
+    else:
+        print('error, need to specify vert or horz')
+
+    unadopted = []
+    bids = None
+    newagents =[]
+    if len(agents) == 0:
+        unadopted.extend(range(len(candidates)))
+    else:
+        print('agents, candidates',len(agents),len(candidates))
+
+        bids = nu.zeros((len(candidates),len(agents)))
+        for i,c in enumerate(candidates):
+            bids[i,:] = nu.array([nu.abs(a.bid(*c)) for a in agents])
+            
+        sortedBets = nu.argsort(bids,1)
+        cidx = nu.argsort(sortedBets[:,0])
+        adopters = set([])
+        print(bids)
+        for i in cidx:
+            bestBidder = sortedBets[i,0]
+            bestBet = bids[i,bestBidder]
+            if bestBet <= agents[bestBidder].maxError and not bestBidder in adopters:
+                agents[bestBidder].award(*candidates[i])
+                adopters.add(bestBidder)
+                newagents.append(agents[bestBidder])
+            else:
+                unadopted.append(i)
+        newagents.extend([agents[x] for x in set(range(len(agents))).difference(adopters)])
+    if not fixAgents:
+        for i in unadopted:
+            if len(candidates[i]) >1 and (candidates[i][-1][0]-candidates[i][0][0]) <= M/50.:
+                # only add an agent if we are on a small section
+                newagent = AgentType(nu.mean(nu.array(candidates[i]),0))
+                newagents.append(newagent)
+    
     return [a for a in newagents if a.tick(fixAgents)]
 
 class StaffLineAgent(Agent):
@@ -362,7 +416,7 @@ def getOffset(v1,v2,dx,maxAngle):
             dotproducts.append(nu.dot(v1[:e],v2[b:]))
             rng.append(i)
     ndp = normalize(nu.array(dotproducts))
-    return ndp, rng[nu.argmax(ndp)]
+    return ndp, -rng[nu.argmax(ndp)]
 
 def getter(f):
     "Stores the value for later use"
@@ -388,22 +442,22 @@ class VerticalSegment(object):
         agents = []
         #print(nu.sum(self.getVSums()))
         cols = selectColumns(self.getVSums(),self.colGroups)[0]
-        StaffAgent = makeAgentClass(targetAngle=-self.getAngle(),
-                                    maxAngleDev=.1,
-                                    maxError=10,
+        StaffAgent = makeAgentClass(targetAngle=self.getAngle(),
+                                    maxAngleDev=1/180.,
+                                    maxError=20,
                                     minScore=-2,
                                     offset=self.top)
         draw = True
         f0 = os.path.splitext(self.scrImage.fn)[0]
         print('default angle for this staff',self.getAngle())
         for i,c in enumerate(cols):
-            agentsnew = getCrossings(self.getImgSegment()[:,c],agents,StaffAgent,
-                                     self.scrImage.getWidth(),horz=c)
+            agentsnew = assignToAgents(self.getImgSegment()[:,c],agents,StaffAgent,
+                                       self.scrImage.getWidth(),horz=c)
             if len(agentsnew) > 1:
                 agentsnew = mergeAgents(agentsnew)
             
-            #if i > 100:
-            #    draw = True
+            if i > 100:
+                draw = True
             agents = agentsnew
             if draw:
                 self.scrImage.ap.reset()
