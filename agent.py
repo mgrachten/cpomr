@@ -150,6 +150,14 @@ def tls(X):
 def getError(x,a):
     return nu.sum(nu.dot(x,nu.array([nu.cos(a*nu.pi),-nu.sin(a*nu.pi)]).T)**2)**.5
 
+def makeAgentClass(targetAngle,maxAngleDev,maxError,minScore):
+    class CustomAgent(Agent): pass
+    CustomAgent.targetAngle = targetAngle
+    CustomAgent.maxError = maxError
+    CustomAgent.maxAngleDev = maxAngleDev
+    CustomAgent.minScore = minScore
+    return CustomAgent
+
 class Agent(object):
     targetAngle = 0
     maxError = 5

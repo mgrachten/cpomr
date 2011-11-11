@@ -4,40 +4,17 @@ import sys
 import numpy as nu
 from scipy import signal
 from stafffind import selectColumns
-from imageUtil import normalize
+from imageUtil import normalize, smooth, findValleys
 from scipy.stats import distributions
-
-def smooth(x,k):
-    return nu.convolve(x,signal.hanning(k),'same')
-
-def findPeaks(v):
-    """find the peaks in a smooth curve
-    """
-    x = nu.zeros(len(v))
-    x[2:len(x)-2] = nu.diff(nu.diff(nu.sign(nu.diff(v)),2))
-    x[x<2] = 0
-    peaks = nu.nonzero(x)[0]
-    return peaks
-
-def findValleys(v):
-    """find the valleys in a smooth curve
-    """
-    x = nu.zeros(len(v))
-    sdx = nu.sign(nu.diff(v))
-    nz = nu.nonzero(sdx)[0]
-    valleybegins = nu.nonzero(nu.diff(sdx[nz]) > 0)[0]
-    valleys = .5+(nz[valleybegins]+nz[valleybegins+1])/2.0
-    return valleys.astype(nu.int)
 
 def findStaffs(r):
     vhist = nu.sum(r,1)
     N = len(vhist)
     typicalNrOfSystemPerPage = 6
     K = int(N/(2*typicalNrOfSystemPerPage))+1
-    vhist = smooth(vhist,K)
-    nu.savetxt('/tmp/vh.txt',vhist)
-    return findValleys(vhist)
-
+    svhist = smooth(vhist,K)
+    nu.savetxt('/tmp/vh.txt',nu.column_stack((vhist,svhist)))
+    return findValleys(svhist)
 
 def getOffset(v1,v2,dx,maxAngle):
     #kmax = min(70,int(1.5*nu.ceil(dx*nu.tan(maxAngle*nu.pi))))
@@ -47,7 +24,6 @@ def getOffset(v1,v2,dx,maxAngle):
     assert N == len(v2)
     dotproducts = []
     rng = []
-    
     for i in range(-kmax,kmax+1):
         b = min(max(0,i),N)
         e = max(0,min(N,N-i))
@@ -103,12 +79,17 @@ def angleEstimator(img):
         start = end
     bins,lims = nu.histogram(nu.vstack(gangles),bins=hbins,range=histrange)
     angles = (lims[1:]+lims[:-1])/2.0
+    nu.savetxt('/tmp/gh.txt',nu.column_stack((angles,bins)))
     sbins = smooth(bins,50)
     amax = angles[nu.argmax(sbins)]
+    print(nu.argmax(sbins))
+    print(amax)
     weights = distributions.norm(amax,.5).pdf(angles)
+    nu.savetxt('/tmp/w0.txt',weights)
     nu.savetxt('/tmp/gangles.txt',nu.column_stack((.5*(lims[1:]+lims[:-1]),bins,sbins,weights)))
     for i,shist in enumerate(shists):
-        print(i,angles[nu.argmax(shist*weights)])
+        nu.savetxt('/tmp/b{0}.txt'.format(i),shist*weights)
+        print(i,nu.argmax(shist*weights),angles[nu.argmax(shist*weights)])
 
 
 if __name__ == '__main__':

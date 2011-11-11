@@ -5,6 +5,28 @@ from PIL import Image
 import numpy as nu
 from scipy import signal
 
+def smooth(x,k):
+    return nu.convolve(x,signal.hanning(k),'same')
+
+def findPeaks(v):
+    """find the peaks in a smooth curve
+    """
+    x = nu.zeros(len(v))
+    x[2:len(x)-2] = nu.diff(nu.diff(nu.sign(nu.diff(v)),2))
+    x[x<2] = 0
+    peaks = nu.nonzero(x)[0]
+    return peaks
+
+def findValleys(v):
+    """find the valleys in a smooth curve
+    """
+    x = nu.zeros(len(v))
+    sdx = nu.sign(nu.diff(v))
+    nz = nu.nonzero(sdx)[0]
+    valleybegins = nu.nonzero(nu.diff(sdx[nz]) > 0)[0]
+    valleys = .5+(nz[valleybegins]+nz[valleybegins+1])/2.0
+    return valleys.astype(nu.int)
+
 def normalize(x):
     xmin = float(nu.min(x))
     xmax = float(nu.max(x))

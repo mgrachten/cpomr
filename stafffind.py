@@ -6,7 +6,7 @@ import numpy as nu
 from imageUtil import writeImageData, getPattern
 from utilities import argpartition, partition, makeColors
 from main import convolve
-from agent import Agent, AgentPainter
+from agent import Agent, AgentPainter, makeAgentClass
 
 def getCrossings(v,oldagents,AgentType,M,vert=None,horz=None,fixAgents=False):
     agents = oldagents[:]
@@ -75,7 +75,8 @@ class StaffLineAgent(Agent):
 def selectColumns(vsums,bins):
     N = len(vsums)
     nzidx = nu.nonzero(vsums)[0]
-    binSize = int(nu.floor(len(nzidx)/bins))
+    binSize = int(nu.floor(len(nzidx)/float(bins)))
+    #print(len(nzidx),binSize,bins)
     idxm = nzidx[:bins*binSize].reshape((bins,binSize))
     for i in range(bins):
         idxm[i,:] = idxm[i,nu.argsort(vsums[idxm[i,:]])]
@@ -340,8 +341,135 @@ def findStaffLines(img,fn):
             ap.drawAgentGood(a)
     ap.writeImage(fn)
     return [agents[k*10:(k+1)*10] for k in range(len(agents)/10)]
-    #return agents
 
+#def findStaffLines(img,fn):
+#    N,M = img.shape
+
+from imageUtil import findValleys, smooth, normalize
+from scipy.stats import distributions
+
+def getOffset(v1,v2,dx,maxAngle):
+    #kmax = min(70,int(1.5*nu.ceil(dx*nu.tan(maxAngle*nu.pi))))
+    kmax = 50
+    N = len(v1)
+    dotproducts = []
+    rng = []
+    for i in range(-kmax,kmax+1):
+        b = min(max(0,i),N)
+        e = max(0,min(N,N-i))
+        if e > 0:
+            dotproducts.append(nu.dot(v1[:e],v2[b:]))
+            rng.append(i)
+    ndp = normalize(nu.array(dotproducts))
+    return ndp, rng[nu.argmax(ndp)]
+
+def getter(f):
+    "Stores the value for later use"
+    def _getter(self):
+        if not hasattr(self,'valuedict'):
+            self.valuedict = {}
+        if not self.valuedict.has_key(f):
+            self.valuedict[f] = f(self)
+        return self.valuedict[f]
+    return _getter
+
+class VerticalSegment(object):
+    def __init__(self,scoreImage,top,bottom,colGroups=11,
+                 maxAngle=2/180.,nAngleBins=300):
+        self.scrImage = scoreImage
+        self.top = top
+        self.bottom = bottom
+        self.maxAngle = maxAngle
+        self.nAngleBins = nAngleBins
+        self.colGroups = colGroups
+
+    def getStaffLines(self):
+        agents = []
+        #print(nu.sum(self.getVSums()))
+        cols = selectColumns(self.getVSums(),self.colGroups)[0]
+        StaffAgent = makeAgentClass(targetAngle=self.getAngle(),
+                                    maxAngleDev=.3,
+                                    maxError=10,
+                                    minScore=-2)
+        for i,c in enumerate(cols):
+            agentsnew = getCrossings(self.getImgSegment(),agents,StaffAgent,
+                                     self.scrImage.getImg().shape[1],horz=c)
+            print(agentsnew)
+
+    def getImgSegment(self):
+        return self.scrImage.getImg()[self.top:self.bottom,:]
+
+    @getter
+    def getVSums(self):
+        return nu.sum(self.getImgSegment(),0)
+
+    @getter
+    def getAngleHistogram(self):
+        #self.vSums = nu.sum(self.scrImage.getImg()[self.top:self.bottom,:],0)
+        hparts = 3
+        cols = selectColumns(self.getVSums(),hparts)[0]
+        angles = []
+        nColsToProcess = int(2*len(cols)/10)
+        for j in range(nColsToProcess):
+            dx = cols[j]-cols[j+1]
+            dps,dy = getOffset(self.scrImage.getImg()[self.top:self.bottom,cols[j]],
+                               self.scrImage.getImg()[self.top:self.bottom,cols[j+1]],
+                               nu.abs(dx),self.maxAngle)
+            if nu.min(dps) < 0.5: # min is only > 0 when dps has zero range
+                angles.append((nu.arctan2(dy,dx)/nu.pi+.5)%1-.5)
+        histrange = (-self.maxAngle,self.maxAngle)
+        #bins,lims = nu.histogram(angles,bins=self.nbins,range=histrange)
+        return nu.histogram(angles,bins=self.nAngleBins,range=histrange)[0]
+
+    @getter
+    def getAngle(self):
+        """estimate the angle by taking the argmax of the angle histogram,
+        weighted by the global angle histogram of the page.
+        """
+        i = nu.argmax(self.getAngleHistogram()*self.scrImage.getWeights())
+        #nu.savetxt('/tmp/h{0}'.format(i),self.getAngleHistogram()*weights)
+        return (float(self.maxAngle)/self.nAngleBins)-\
+            self.maxAngle+i*2.0*self.maxAngle/self.nAngleBins
+
+class ScoreImage(object):
+    def __init__(self,img):
+        self.img = img
+        self.N,self.M = self.img.shape
+        self.typicalNrOfSystemPerPage = 6
+        self.maxAngle = 2/180.
+        self.nAnglebins = 600
+        self.colGroups = 11
+    def getImg(self):
+        return self.img
+
+    @getter
+    def getHSums(self):
+        return nu.sum(self.getImg(),1)
+
+    @getter
+    def getVSegments(self):
+        K = int(self.N/(2*self.typicalNrOfSystemPerPage))+1
+        sh = smooth(self.getHSums(),K)
+        #nu.savetxt('/tmp/vh1.txt',nu.column_stack((self.getHSums(),sh)))
+        segBoundaries = nu.append(0,nu.append(findValleys(sh),self.N))
+        vsegments = []
+        for i in range(len(segBoundaries)-1):
+            vsegments.append(VerticalSegment(self,segBoundaries[i],segBoundaries[i+1],
+                                             colGroups = self.colGroups,
+                                             maxAngle = self.maxAngle,
+                                             nAngleBins = self.nAnglebins))
+        return vsegments
+
+    @getter    
+    def getWeights(self):
+        globalAngleHist = smooth(nu.sum(nu.array([s.getAngleHistogram() for s 
+                                                  in self.getVSegments()]),0),50)
+        angles = nu.linspace(-self.maxAngle,self.maxAngle,self.nAnglebins+1)[:-1] +\
+            (float(self.maxAngle)/self.nAnglebins)
+
+        amax = angles[nu.argmax(globalAngleHist)]
+        return distributions.norm(amax,.5/180.0).pdf(angles)
+            
 if __name__ == '__main__':
     fn = sys.argv[1]
     print('Loading image...'),
@@ -353,9 +481,22 @@ if __name__ == '__main__':
         raise e
         sys.exit()#pass
     print('Done')
-    bgThreshold = 10
+    bgThreshold = 20
     img[img< bgThreshold] = 0
+    #img[img>= bgThreshold] = 255
+
     #findStaffLines(img[1500:,:],fn)
+    si = ScoreImage(img)
+    for vs in si.getVSegments()[:1]:
+        #print(180*vs.getAngle())
+        vs.getStaffLines()
+    #print(si.getHSums())
+    #print(si.getHSums())
+    #print(si.getHSums())
+    #si.estimateSegmentAngles()
+    #si.getVSegments()[0].getStaffLines()
+    sys.exit()
+
     agentfn = os.path.join('/tmp/',os.path.splitext(os.path.basename(fn))[0]+'.agents')
     agents = findStaffLines(img,fn)
     with open(agentfn,'w') as f:

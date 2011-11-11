@@ -157,7 +157,7 @@ if __name__ == '__main__':
     bgThreshold = 20
     #img = img[:825,:]
     img[img< bgThreshold] = 0
-    img[img>= bgThreshold] = 255
+    #img[img>= bgThreshold] = 255
     angleEstimator(img)
     sys.exit()
     agentfn = os.path.join('/tmp/',os.path.splitext(os.path.basename(fn))[0]+'.agents')
