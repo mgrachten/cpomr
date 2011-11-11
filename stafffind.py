@@ -12,7 +12,8 @@ def getCrossings(v,oldagents,AgentType,M,vert=None,horz=None,fixAgents=False):
     agents = oldagents[:]
     data = nu.nonzero(v)[0]
     if len(data) > 1:
-        candidates = [tuple(x) if len(x)==1 else (x[0],x[-1]) for x in nu.split(data,nu.nonzero(nu.diff(data)>1)[0]+1)]
+        candidates = [tuple(x) if len(x)==1 else (x[0],x[-1]) for x in 
+                      nu.split(data,nu.nonzero(nu.diff(data)>1)[0]+1)]
     elif len(data) == 1:
         candidates = [tuple(data)]
     else:
@@ -28,6 +29,7 @@ def getCrossings(v,oldagents,AgentType,M,vert=None,horz=None,fixAgents=False):
     unadopted = []
     bids = None
     angles = [a.getAngle() for a in agents]
+    print(angles)
     predominantAngle = nu.median(angles[:10])
     anglePens = nu.abs(angles-predominantAngle)+1
     newagents =[]
@@ -388,7 +390,7 @@ class VerticalSegment(object):
         #print(nu.sum(self.getVSums()))
         cols = selectColumns(self.getVSums(),self.colGroups)[0]
         StaffAgent = makeAgentClass(targetAngle=self.getAngle(),
-                                    maxAngleDev=.3,
+                                    maxAngleDev=.1,
                                     maxError=10,
                                     minScore=-2)
         for i,c in enumerate(cols):
