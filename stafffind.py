@@ -428,6 +428,15 @@ def getter(f):
         return self.valuedict[f]
     return _getter
 
+
+def setter(f):
+    "Stores the value for later use"
+    def _setter(self,*args,**kwargs):
+        if not hasattr(self,'valuedict'):
+            self.valuedict = {}
+        self.valuedict[f] = f(self,*args,**kwargs)
+    return _setter
+
 class VerticalSegment(object):
     def __init__(self,scoreImage,top,bottom,colGroups=11,
                  maxAngle=2/180.,nAngleBins=300):
