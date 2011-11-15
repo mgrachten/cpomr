@@ -176,7 +176,7 @@ class Agent(object):
             self._addLineWidth(1.0)
         self.points = nu.array(xy).reshape((1,2))
         self.mean = xy
-        self.angle = 0
+        self.angleDev = 0
         self.error = 0
         self.score = 0
         self.adopted = True
@@ -191,7 +191,7 @@ class Agent(object):
         clone.points = self.points
         clone.score = self.score
         clone.mean = self.mean
-        clone.angle = self.angle
+        clone.angleDev = self.angleDev
         clone.offset = self.offset
         clone.lineWidth = self.lineWidth[:]
         if self.offspring == 0:
@@ -226,9 +226,9 @@ class Agent(object):
         self.lwstd = nu.std(self.lineWidth)
     
     #def getAngle(self):
-    #    return self.targetAngle + (self.angle-self.targetAngle+.5)%1-.5
+    #    return self.targetAngle + (self.angleDev-self.targetAngle+.5)%1-.5
     def getAngle(self):
-        return self.targetAngle + self.angle
+        return self.targetAngle + self.angleDev
 
     def getDrawPoints(self):
         return self.points+nu.array([self.offset,0])
@@ -250,7 +250,7 @@ class Agent(object):
             print('merge: self, other, new mean')
             print(self.mean,other.mean,nu.mean(self.points,0))
         self.mean = nu.mean(self.points,0)
-        self.angle = tls(self.points-self.mean)
+        self.angleDev = tls(self.points-self.mean)
         self.error = getError(self.points-self.mean,self.getAngle())
         #self.scorehist = self.scorehist+other.scorehist
         self.age = max(self.age,other.age)
@@ -274,25 +274,14 @@ class Agent(object):
         else:
             return not self.died()
     
-    def toVector(self):
-        return nu.array((self.points.shape[0],
-                         self.mean[0],
-                         (self.angle+.5)%1-.5,
-                        self.error,
-                        self.score,
-                        self.age))
-
     def died(self):
-        angleOK = nu.abs(self.angle) <= self.maxAngleDev
+        angleOK = nu.abs(self.angleDev) <= self.maxAngleDev
         errorOK = self.error <= self.maxError
         successRateOK = self.score >= self.minScore
         r = not all((angleOK,errorOK,successRateOK))
-        #print('Agenteval: {0}; angleOK: {1}; errorOK: {2}, scoreOK: {3}'.format(self,angleOK,errorOK,successRateOK))
-        #print('a,ta',self.getAngle(),self.targetAngle)
-        #print('adev,maxadev',nu.abs(self.getAngle()-self.targetAngle),self.maxAngleDev)
         if r:
             print('Died: {0}; angleOK: {1}; errorOK: {2}, scoreOK: {3}'.format(self,angleOK,errorOK,successRateOK))
-            print('a,ta',self.angle,self.targetAngle)
+            print('a,ta',self.angleDev,self.targetAngle)
             print('adev,maxadev',nu.abs(self.getAngle()-self.targetAngle),self.maxAngleDev)
         return r
   
@@ -324,31 +313,6 @@ class Agent(object):
         x = b/(nu.tan(nu.pi*self.getAngle())-slope)
         r =  nu.array((slope*x+b,x))+self.mean
         return r
-    
-    def award(self,xy0,xy1=None):
-        self.adopted = True
-        if xy1 != None:
-            error0 = nu.dot(xy0-self.mean,nu.array([nu.cos(self.angle*nu.pi),-nu.sin(self.angle*nu.pi)]))
-            error1 = nu.dot(xy1-self.mean,nu.array([nu.cos(self.angle*nu.pi),-nu.sin(self.angle*nu.pi)]))
-            lw = 1+nu.sum((xy0-xy1)**2)**.5
-            if nu.sign(error0) != nu.sign(error1):
-                xy = self.getIntersection(xy0,xy1)
-            else:
-                if lw <= self.getLineWidth() + self.getLineWidthStd():
-                    # it's most probably a pure segment of the line, store the mean
-                    xy = (xy0+xy1)/2.0
-                else:
-                    # too thick to be a line, store the point that has smallest error
-                    xy = (xy0,xy1)[nu.argmin(nu.abs([error0,error1]))]
-            self._addLineWidth(lw)
-        else:
-            self._addLineWidth(1.0)
-            xy = xy0
-        #print('adding:',xy)
-        self.points = nu.vstack((self.points,xy))
-        self.mean = nu.mean(self.points,0)
-        self.angle = ((tls(self.points-self.mean)-self.targetAngle)+.5)%1-.5
-        self.error = getError(self.points-self.mean,self.getAngle())
 
     def _getAngleDistance(self,a):
         #return -nu.arctan2(*(xy-self.mean))/nu.pi
@@ -362,10 +326,10 @@ class Agent(object):
         return nu.sort([(a+1)%1,self.getAngle()-self.maxAngleDev,
                         self.getAngle()+self.maxAngleDev])[1]
 
-    def bid(self,xy0,xy1=None):
+    def preparePointAdd(self,xy0,xy1=None):
         if xy1 != None:
-            error0 = nu.dot(xy0-self.mean,nu.array([nu.cos(self.angle*nu.pi),-nu.sin(self.angle*nu.pi)]))
-            error1 = nu.dot(xy1-self.mean,nu.array([nu.cos(self.angle*nu.pi),-nu.sin(self.angle*nu.pi)]))
+            error0 = nu.dot(xy0-self.mean,nu.array([nu.cos(self.getAngle()*nu.pi),-nu.sin(self.getAngle()*nu.pi)]))
+            error1 = nu.dot(xy1-self.mean,nu.array([nu.cos(self.getAngle()*nu.pi),-nu.sin(self.getAngle()*nu.pi)]))
             lw = 1+nu.sum((xy0-xy1)**2)**.5
             if nu.sign(error0) != nu.sign(error1):
                 xy = self.getIntersection(xy0,xy1)
@@ -377,51 +341,28 @@ class Agent(object):
                     # too thick to be a line, store the point that has smallest error
                     xy = (xy0,xy1)[nu.argmin(nu.abs([error0,error1]))]
         else:
+            lw = 1.0
             xy = xy0
         points = nu.vstack((self.points,xy))
-        points -= nu.mean(points,0)
-        angle = tls(points)
-        error = getError(points,angle)
-        return error,angle
+        print('points')
+        print(points)
+        mean = nu.mean(points,0)
+        print('mean')
+        print(mean)
+        tlsr = tls(points-mean)
+        print('z points')
+        print(points-mean)
+        print('tlsr',tlsr)
+        angleDev = ((tlsr-self.targetAngle)+.5)%1-.5
+        error = getError(points-mean,angleDev+self.targetAngle)
+        return error,angleDev,mean,lw,points
 
-    def bidOld(self,xy0,xy1=None):
-        # distance of xy0 to the current line (defined by self.angle)
-        if self.points.shape[0] == 1:
-            # we have no empirical angle yet
-            # find the optimal angle (within maxAngleDev), and give the error respective to that
-            if xy1 == None:
-                xyp1 = xy0
-            else:
-                xyp1 = xy1
-            aa0 = self._getAngleDistance(self._getAngle(xy0))
-            aa1 = self._getAngleDistance(self._getAngle(xyp1))
-            print('aa0, aa1',aa0,aa1)
-            #print([self.targetAngle-aa0,self.targetAngle-aa1,self.getAngle()])
-            angle = nu.sort([self.targetAngle+aa0,self.targetAngle+aa1,self.getAngle()])[1]
-        else:
-            angle = self.getAngle()
-            #angle = self.angle
+    def bid(self,xy0,xy1=None):
+        error,angleDev,mean,lw,points = self.preparePointAdd(xy0,xy1=xy1)
+        return error,angleDev,mean,lw,points
 
-        if nu.abs(self._getAngleDistance(angle)) > self.maxAngleDev:
-            
-            return self.maxError+1
-        print('adjusting angle:',self.getAngle(),'to',angle)
-        #print('cos angle, -sin angle:',nu.array([nu.cos(angle*nu.pi),-nu.sin(angle*nu.pi)]))
-        apenalty = 0#nu.abs(self.targetAngle-angle)
-        error0 = nu.dot((xy0-self.mean),nu.array([nu.cos(angle*nu.pi),-nu.sin(angle*nu.pi)]))
-        #print('error0',error0)
-        if xy1 == None:
-            return nu.abs(error0)+apenalty
-        error1 = nu.dot(xy1-self.mean,nu.array([nu.cos(angle*nu.pi),-nu.sin(angle*nu.pi)]))
-        #print('error1',error1)
-        if nu.sign(error0) != nu.sign(error1):
-            return 0.0+apenalty
-        else:
-            return min(nu.abs(error0),nu.abs(error1))+apenalty
-        
-    def getRotMatrix(self):
-        return nu.array([[nu.sin(self.getAngle()*nu.pi),nu.cos(self.getAngle()*nu.pi)],
-                         [nu.cos(self.getAngle()*nu.pi),-nu.sin(self.getAngle()*nu.pi)]])
+    def award(self,xy0,xy1=None):
+        self.error,self.angleDev,self.mean,self.lw,self.points = self.preparePointAdd(xy0,xy1=xy1)
 
 
 class BarLineAgent(Agent):
@@ -441,28 +382,34 @@ class StaffLineAgent(Agent):
     minScore = -1
 
 if __name__ == '__main__':
-    StaffAgent = makeAgentClass(targetAngle=.1,
-                                maxAngleDev=30/180.,
+    StaffAgent = makeAgentClass(targetAngle=-.02,
+                                maxAngleDev=4/180.,
                                 maxError=20,
                                 minScore=-2,
                                 offset=0)
     
     #high
-    x01 = nu.array([200.0,200])
-    x11 = nu.array([200.0,205])
+    #x01 = nu.array([200.0,200])
+    #x11 = nu.array([200.0,205])
     #low
     x00 = nu.array([400.0,200])
-    x10 = nu.array([400.0,200])
+    #x10 = nu.array([400.0,200])
 
     a0 = StaffAgent(x00)
     print(a0)
     y1 = nu.array((398,1000))
-    y2 = nu.array((395,1000))
-    print(a0.bid(y1,y2))
-    print(a0.award(y1,y2))
+    y2 = nu.array((595,1000))
+    print('a',a0._getAngle(y1))
+    print('bid',a0.bid(y1,y2))
+    print('award',a0.award(y1,y2))
     print(a0)
-    print(a0.tick())
+    print('pass?',a0.tick())
+    
+    print('\n\n')
     sys.exit()
+
+
+
 
     a0.award(x01)
     a1 = BarLineAgent(x10)
