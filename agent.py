@@ -54,12 +54,12 @@ class AgentPainter(object):
             c2 = nu.maximum(0,c-100)
             M,N = self.img.shape[1:]
             for r in range(rmin,rmax):
-                x = -r*nu.sin(agent.getAngle()*nu.pi)+agent.getDrawMean()[0]
-                y = -r*nu.cos(agent.getAngle()*nu.pi)+agent.getDrawMean()[1]
+                x = r*nu.sin(agent.getAngle()*nu.pi)+agent.getDrawMean()[0]
+                y = r*nu.cos(agent.getAngle()*nu.pi)+agent.getDrawMean()[1]
                 #print(r,agent.getAngle(),agent.getDrawMean(),x,y)
                 #print(x,y)
                 if 0 <= x < M and 0 <= y < N:
-                    alpha = min(.8,max(.1,.5+float(agent.score)/agent.age))
+                    alpha = min(.8,max(.1,.5+float(agent.score)/max(1,agent.age)))
                     self.paint(nu.array((x,y)),c2,alpha)
 
             self.paintRect(agent.getDrawPoints()[0][0],agent.getDrawPoints()[0][0],
@@ -202,7 +202,10 @@ class Agent(object):
         return clone
 
     def __str__(self):
-        return 'Agent: {7}; angle: {3:03f}; error: {0:03f} age: {1}; points: {2}; score: {4}; mean: {5}; width: {6}'.format(self.error,self.age,self.points.shape[0],self.getAngle(),self.score,self.mean,self.getLineWidth(),self.id)
+        #return 'Agent: {id}; angle: {8:03f}; da: {3:03f}; error: {err:03f} age: {1}; points: {2}; score: {4}; mean: {5}; width: {6}'.format(id=self.id,err=self.error,self.age,self.points.shape[0],self.getAngle(),self.score,self.mean,self.getLineWidth(),self.id,self.)
+        return 'Agent: {id}; angle: {angle:0.4f} ({ta:0.4f}+{ad:0.4f}); error: {err:0.3f} age: {age}; npts: {pts}; score: {score}; mean: {mean}'\
+            .format(id=self.id,err=self.error,angle=self.getAngle(),ta=self.targetAngle,ad=self.angleDev,
+                    age=self.age,pts=self.points.shape[0],score=self.score,mean=self.mean)
 
     def mergeable(self,other,track=False):
         e0 = getError(other.points-self.mean,self.getAngle())
@@ -214,6 +217,27 @@ class Agent(object):
         #return e if e < self.maxError else nu.inf
         return e
 
+    def getAngleCriticality(self):
+        return nu.abs(self.angleDev)/self.maxAngleDev
+    def getErrorCriticality(self):
+        return self.error/self.maxError
+        
+    def mergeableNew(self,other,track=False):
+        assert self.targetAngle == other.targetAngle
+        points = nu.vstack((self.points,other.points))
+        mean = nu.mean(points,0)
+        tlsr = tls(points-mean)
+        angleDev = ((tlsr-self.targetAngle)+.5)%1-.5
+        error = getError(points-mean,angleDev+self.targetAngle)/points.shape[0]
+        #return error,angleDev,mean,lw,points
+        angleCriticality = nu.abs(angleDev)/self.maxAngleDev
+        errorCriticality = error/float(self.maxError)
+        return 0 if angleCriticality < 1 and \
+            angleCriticality < (self.getAngleCriticality() + other.getAngleCriticality())/2.0 and\
+            errorCriticality < 1 and \
+            errorCriticality < (self.getErrorCriticality() + other.getErrorCriticality())/2.0 else self.maxError+1
+    
+    
     def getLineWidth(self):
         return self.lw
 
@@ -250,8 +274,8 @@ class Agent(object):
             print('merge: self, other, new mean')
             print(self.mean,other.mean,nu.mean(self.points,0))
         self.mean = nu.mean(self.points,0)
-        self.angleDev = tls(self.points-self.mean)
-        self.error = getError(self.points-self.mean,self.getAngle())
+        self.angleDev = ((tls(self.points-self.mean)-self.targetAngle)+.5)%1-.5
+        self.error = getError(self.points-self.mean,self.getAngle())/self.points.shape[0]
         #self.scorehist = self.scorehist+other.scorehist
         self.age = max(self.age,other.age)
         self.score = self.score+other.score
@@ -281,8 +305,8 @@ class Agent(object):
         r = not all((angleOK,errorOK,successRateOK))
         if r:
             print('Died: {0}; angleOK: {1}; errorOK: {2}, scoreOK: {3}'.format(self,angleOK,errorOK,successRateOK))
-            print('a,ta',self.angleDev,self.targetAngle)
-            print('adev,maxadev',nu.abs(self.getAngle()-self.targetAngle),self.maxAngleDev)
+            #print('a,ta',self.angleDev,self.targetAngle)
+            #print('adev,maxadev',nu.abs(self.getAngle()-self.targetAngle),self.maxAngleDev)
         return r
   
     def getIntersection(self,xy0,xy1):
@@ -331,10 +355,13 @@ class Agent(object):
             error0 = nu.dot(xy0-self.mean,nu.array([nu.cos(self.getAngle()*nu.pi),-nu.sin(self.getAngle()*nu.pi)]))
             error1 = nu.dot(xy1-self.mean,nu.array([nu.cos(self.getAngle()*nu.pi),-nu.sin(self.getAngle()*nu.pi)]))
             lw = 1+nu.sum((xy0-xy1)**2)**.5
+            #print(self)
+            #print('lw',lw,self.getLineWidth(),self.getLineWidthStd())
+            #print('prepare point add',xy0,xy1)
             if nu.sign(error0) != nu.sign(error1):
                 xy = self.getIntersection(xy0,xy1)
             else:
-                if lw <= self.getLineWidth() + self.getLineWidthStd():
+                if lw <= self.getLineWidth() + max(1,self.getLineWidthStd()):
                     # it's most probably a pure segment of the line, store the mean
                     xy = (xy0+xy1)/2.0
                 else:
@@ -344,24 +371,42 @@ class Agent(object):
             lw = 1.0
             xy = xy0
         points = nu.vstack((self.points,xy))
-        print('points')
-        print(points)
         mean = nu.mean(points,0)
-        print('mean')
-        print(mean)
         tlsr = tls(points-mean)
-        print('z points')
-        print(points-mean)
-        print('tlsr',tlsr)
         angleDev = ((tlsr-self.targetAngle)+.5)%1-.5
-        error = getError(points-mean,angleDev+self.targetAngle)
+        error = getError(points-mean,angleDev+self.targetAngle)/points.shape[0]
         return error,angleDev,mean,lw,points
 
     def bid(self,xy0,xy1=None):
+        #TODO:
+        """give as bid value: error of new point w.r.t. median error of agent
+
+        """
         error,angleDev,mean,lw,points = self.preparePointAdd(xy0,xy1=xy1)
-        return error,angleDev,mean,lw,points
+        assert self.maxAngleDev > 0
+        assert self.maxError > 0
+        angleCriticality = nu.abs(angleDev)/self.maxAngleDev
+        errorCriticality = error/self.maxError
+        print('BID')
+        print(self)
+        print(xy0,xy1)
+        ainc = (nu.abs(angleDev)-nu.abs(self.angleDev))/self.maxAngleDev
+        einc = (error-self.error)/self.maxError
+        print('angle inc',ainc)
+        print('error inc',einc)
+        allowedIncrease = .2 # proportion
+        if False: #ainc > allowedIncrease:
+            return 2
+        if einc > allowedIncrease:
+            return 2
+        return max(angleCriticality,errorCriticality)
+        #if nu.abs(angleDev) > self.maxAngleDev:
+        #    return self.maxError+1
+        #else:
+        #    return error-self.error
 
     def award(self,xy0,xy1=None):
+        self.adopted = True
         self.error,self.angleDev,self.mean,self.lw,self.points = self.preparePointAdd(xy0,xy1=xy1)
 
 
@@ -382,62 +427,63 @@ class StaffLineAgent(Agent):
     minScore = -1
 
 if __name__ == '__main__':
-    StaffAgent = makeAgentClass(targetAngle=-.02,
-                                maxAngleDev=4/180.,
+    StaffAgent = makeAgentClass(targetAngle=.005,
+                                maxAngleDev=5/180.,
                                 maxError=20,
                                 minScore=-2,
                                 offset=0)
+    partner = nu.array((3,0))
     
     #high
     #x01 = nu.array([200.0,200])
     #x11 = nu.array([200.0,205])
     #low
-    x00 = nu.array([400.0,200])
-    #x10 = nu.array([400.0,200])
+    x = nu.array([(40,10,3),
+                  (45,510,3),
+                  (53,1010,3),
+                  (50,1050,3),
+                  (42,850,30)
+                  ])
 
-    a0 = StaffAgent(x00)
-    print(a0)
-    y1 = nu.array((398,1000))
-    y2 = nu.array((595,1000))
-    print('a',a0._getAngle(y1))
-    print('bid',a0.bid(y1,y2))
-    print('award',a0.award(y1,y2))
-    print(a0)
-    print('pass?',a0.tick())
+    N,M = 1000,2000
+    img = nu.zeros((N,M))
     
+    def getPoints(i):
+        return x[i,:2],x[i,:2]+nu.array((x[i,2],0))
+
+    for i in range(x.shape[0]):
+        img[x[i,0],x[i,1]] = 255
+        img[x[i,0]+x[i,2],x[i,1]] = 255
+    ap = AgentPainter(img)
+    a0 = StaffAgent(*getPoints(0))
+    ap.writeImage('hoi00a.png')
+    ap.register(a0)
+
+    ap.drawAgentGood(a0,-2000,2000)
+    ap.writeImage('hoi00b.png')
+    
+    for i in range(1,x.shape[0]):
+        print(a0)
+        ap.reset()
+        print('bid',a0.bid(*getPoints(i)))
+        print('award',a0.award(*getPoints(i)))
+        print('pass?',a0.tick())
+        ap.drawAgentGood(a0,-2000,2000)
+        ap.writeImage('hoi{0:02d}.png'.format(i))
+        print('')
+
+    print(a0)
+    print('d',a0.getIntersection(*getPoints(-1)))
+
     print('\n\n')
     sys.exit()
 
-
-
-
-    a0.award(x01)
-    a1 = BarLineAgent(x10)
-    a1.award(x00)
-    a2 = BarLineAgent(x00)
-    a2.award(x01)
-    a2.award(x10)
-    a2.award(x11)
-    print(a0.mergeable(a1))
+    print('')
+    y1 = nu.array((400,2000))
+    #print('a',a0._getAngle(y1))
+    print('bid',a0.bid(y1,y1+partner))
+    print('award',a0.award(y1,y1+nu.array((3,0))))
     print(a0)
-    print(a1)
-    print(a2)
-    sys.exit()
-    x2b = nu.array([5,14])
-    #x2a = nu.array([15,10])
-    #x2b = nu.array([5,14])
-    #x3 = nu.array([-.1,-100])
-    x3 = nu.array([5,-1])
-    x3b = nu.array([-5,-1])
-    #xy = nu.vstack((x1,x2))
-
-    #print(a._getAngle(x2b))
-    #print(a._getClosestAngle(a._getAngle(x2b)))
-    b = a.bid(x2a,x2b)
-    a.award(x2a,x2b)
-   
-    #a.mean = nu.array([0,0])
-    #d1 = nu.array([10,1])
-    #d2 = nu.array([-10,1])
-    #print('d',a.getIntersection(d1,d2))
+    print('pass?',a0.tick())
+    
     

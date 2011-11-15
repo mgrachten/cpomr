@@ -89,19 +89,28 @@ def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False):
         unadopted.extend(range(len(candidates)))
     else:
         print('agents, candidates',len(agents),len(candidates))
-
+        #angles = [a.getAngle() for a in agents]
+        #predominantAngle = nu.median(angles[:5])
+        #angleRank = nu.argsort(nu.argsort(nu.abs(angles-predominantAngle)))
+        
+        #print('BIDDING:')
         bids = nu.zeros((len(candidates),len(agents)))
         for i,c in enumerate(candidates):
+            #print('candidate',c)
+            #rbids = [nu.abs(a.bid(*c)) for a in agents]
+            #for j,b in enumerate(rbids):
+            #    print('  {0} bids: {1}'.format(agents[j].id,rbids[j]))
             bids[i,:] = nu.array([nu.abs(a.bid(*c)) for a in agents])
             
         sortedBets = nu.argsort(bids,1)
         cidx = nu.argsort(sortedBets[:,0])
         adopters = set([])
-        print(bids)
         for i in cidx:
+            #bestBidder = nu.argsort((10*nu.argsort(sortedBets[i,:])+angleRank))[0]
             bestBidder = sortedBets[i,0]
             bestBet = bids[i,bestBidder]
-            if bestBet <= agents[bestBidder].maxError and not bestBidder in adopters:
+            #if bestBet <= agents[bestBidder].maxError and not bestBidder in adopters:
+            if bestBet <= 1.0 and not bestBidder in adopters:
                 agents[bestBidder].award(*candidates[i])
                 adopters.add(bestBidder)
                 newagents.append(agents[bestBidder])
@@ -450,15 +459,16 @@ class VerticalSegment(object):
     def getStaffLines(self):
         agents = []
         #print(nu.sum(self.getVSums()))
+        defAngle = self.getAngle()
         cols = selectColumns(self.getVSums(),self.colGroups)[0]
-        StaffAgent = makeAgentClass(targetAngle=self.getAngle(),
-                                    maxAngleDev=1/180.,
-                                    maxError=20,
+        StaffAgent = makeAgentClass(targetAngle=defAngle,
+                                    maxAngleDev=2/180.,
+                                    maxError=3,
                                     minScore=-2,
                                     offset=self.top)
         draw = True
         f0 = os.path.splitext(self.scrImage.fn)[0]
-        print('default angle for this staff',self.getAngle())
+        print('default angle for this staff',defAngle)
         for i,c in enumerate(cols):
             agentsnew = assignToAgents(self.getImgSegment()[:,c],agents,StaffAgent,
                                        self.scrImage.getWidth(),horz=c)
@@ -471,7 +481,8 @@ class VerticalSegment(object):
             if draw:
                 self.scrImage.ap.reset()
                 self.scrImage.ap.paintVLine(c)
-
+            
+            agents.sort(key=lambda x: -x.score)
             for a in agents:
                 print(a)
                 if draw:
