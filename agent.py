@@ -217,6 +217,9 @@ class Agent(object):
         #return e if e < self.maxError else nu.inf
         return e
 
+    #def getPoints(self):
+    #    return self.points+nu.array([self.offset,0])
+
     def getAngleCriticality(self):
         return nu.abs(self.angleDev)/self.maxAngleDev
     def getErrorCriticality(self):
@@ -377,7 +380,7 @@ class Agent(object):
         error = getError(points-mean,angleDev+self.targetAngle)/points.shape[0]
         return error,angleDev,mean,lw,points
 
-    def bid(self,xy0,xy1=None):
+    def bidOld(self,xy0,xy1=None):
         #TODO:
         """give as bid value: error of new point w.r.t. median error of agent
 
@@ -400,10 +403,32 @@ class Agent(object):
         if einc > allowedIncrease:
             return 2
         return max(angleCriticality,errorCriticality)
-        #if nu.abs(angleDev) > self.maxAngleDev:
-        #    return self.maxError+1
-        #else:
-        #    return error-self.error
+
+    def bid(self,xy0,xy1=None):
+        # distance of xy0 to the current line (defined by self.angle)
+        if self.points.shape[0] == 1:
+            # we have no empirical angle yet
+            # find the optimal angle (within maxAngleDev), and give the error respective to that
+            if xy1 == None:
+                xyp1 = xy0
+            else:
+                xyp1 = xy1
+            aa0 = self._getAngleDistance(self._getAngle(xy0))
+            aa1 = self._getAngleDistance(self._getAngle(xyp1))
+            angle = nu.sort([self.targetAngle+aa0,self.targetAngle+aa1,self.getAngle()])[1]
+        else:
+            angle = self.getAngle()
+        if nu.abs(self._getAngleDistance(angle)) > self.maxAngleDev:
+            return self.maxError+1
+        # print('adjusting angle:',self.getAngle(),'to',angle)
+        error0 = nu.dot((xy0-self.mean),nu.array([nu.cos(angle*nu.pi),-nu.sin(angle*nu.pi)]))
+        if xy1 == None:
+            return nu.abs(error0)
+        error1 = nu.dot(xy1-self.mean,nu.array([nu.cos(angle*nu.pi),-nu.sin(angle*nu.pi)]))
+        if nu.sign(error0) != nu.sign(error1):
+            return 0.0
+        else:
+            return min(nu.abs(error0),nu.abs(error1))
 
     def award(self,xy0,xy1=None):
         self.adopted = True
