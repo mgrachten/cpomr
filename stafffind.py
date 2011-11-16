@@ -436,7 +436,19 @@ class ScoreImage(object):
         self.colGroups = 11
         self.bgThreshold = 20
         self.ap = AgentPainter(self.getImg())
-        
+    
+
+    def getSystems(self):
+        # for each segment: split stafflines into groups of 5 (=staffs)
+        # join staffs over all segments
+        # filter out narrower staffs
+        # join subsequent pairs of staffs (=systems)
+
+        # staff attributes needed: 
+        # * inter-staffline-width
+        for vs in self.getVSegments():
+            vs.getStaffLines()
+
     @getter
     def getImg(self):
         print('Loading image...'),
