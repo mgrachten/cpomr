@@ -119,10 +119,12 @@ class AgentPainter(object):
         #print('point',coord,img.shape)
         self.img[:,int(coord[0]),int(coord[1])] = (1-alpha)*self.img[:,int(coord[0]),int(coord[1])]+alpha*color
 
-    def paintVLine(self,y,alpha=.5):
-        self.img[:,:,y] = (1-alpha)*self.img[:,:,y]+alpha*0
-    def paintHLine(self,x,alpha=.5):
-        self.img[:,x,:] = (1-alpha)*self.img[:,x,:]+alpha*0
+    def paintVLine(self,y,alpha=.5,step=1):
+        if 0 <= y < self.img.shape[2]:
+            self.img[:,::step,y] = (1-alpha)*self.img[:,::step,y]+alpha*0
+    def paintHLine(self,x,alpha=.5,step=1):
+        if 0 <= x < self.img.shape[1]:
+            self.img[:,x,::step] = (1-alpha)*self.img[:,x,::step]+alpha*0
 
     def paintRect(self,xmin,xmax,ymin,ymax,color,alpha=.5):
         rectSize = 10

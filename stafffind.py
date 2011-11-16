@@ -2,8 +2,9 @@
 
 import sys,os,pickle
 from scipy import signal,cluster,spatial
+from scipy.stats import distributions
 import numpy as nu
-from imageUtil import writeImageData, getPattern
+from imageUtil import writeImageData, getPattern, findValleys, smooth, normalize
 from utilities import argpartition, partition, makeColors
 from main import convolve
 from agent import Agent, AgentPainter, makeAgentClass
@@ -32,28 +33,18 @@ def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False):
         unadopted.extend(range(len(candidates)))
     else:
         print('agents, candidates',len(agents),len(candidates))
-        #angles = [a.getAngle() for a in agents]
-        #predominantAngle = nu.median(angles[:5])
-        #angleRank = nu.argsort(nu.argsort(nu.abs(angles-predominantAngle)))
-        
-        #print('BIDDING:')
+
         bids = nu.zeros((len(candidates),len(agents)))
         for i,c in enumerate(candidates):
-            #print('candidate',c)
-            #rbids = [nu.abs(a.bid(*c)) for a in agents]
-            #for j,b in enumerate(rbids):
-            #    print('  {0} bids: {1}'.format(agents[j].id,rbids[j]))
             bids[i,:] = nu.array([nu.abs(a.bid(*c)) for a in agents])
             
         sortedBets = nu.argsort(bids,1)
         cidx = nu.argsort(sortedBets[:,0])
         adopters = set([])
         for i in cidx:
-            #bestBidder = nu.argsort((10*nu.argsort(sortedBets[i,:])+angleRank))[0]
             bestBidder = sortedBets[i,0]
             bestBet = bids[i,bestBidder]
             if bestBet <= agents[bestBidder].maxError and not bestBidder in adopters:
-            #if bestBet <= 1.0 and not bestBidder in adopters:
                 agents[bestBidder].award(*candidates[i])
                 adopters.add(bestBidder)
                 newagents.append(agents[bestBidder])
@@ -68,16 +59,6 @@ def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False):
                 newagents.append(newagent)
     
     return [a for a in newagents if a.tick(fixAgents)]
-
-class StaffLineAgent(Agent):
-    targetAngle = 0 # in degrees
-    # maxError should depend on imageSize
-    # good values (empirically established):
-    # maxError=5 for images of approx 826x1169; seems to work also for images of 2550x3510
-    # larger resolutions may need a higher value of maxError
-    maxError = 10 # mean perpendicular distance of points to line (in pixels)
-    maxAngleDev = 2/180. # in degrees
-    minScore = -2
 
 def selectColumns(vsums,bins):
     N = len(vsums)
@@ -172,77 +153,6 @@ def assessLines(agents,N,M,show=False):
     #thr = l0/20.
     thr = l0/10.
     return nu.std(dxs[checkIdx]) < thr
-
-def finalizeAgents(agents,img,bins,fn,ap=None):
-    M = img.shape[1]
-    nsystems = len(agents)/10
-    print('found systems',nsystems)
-    agents.sort(key=lambda x: x.mean[0])
-    newagents = []
-
-    for n in range(nsystems):
-        margin = img.shape[0]/100.
-        #margin = 5
-        top = int(agents[n*10].mean[0]-margin)
-        bottom = int(agents[n*10+9].mean[0]+margin)
-        vsums = nu.sum(img[top:bottom,:],0)
-        columns,colBins = selectColumns(vsums,bins)
-        sysagents = agents[(n*10):(n*10)+10]
-        for a in sysagents:
-            a.mean[0] -= top
-            a.points[:,0] -= top
-        if ap != None and n == 3:
-            for a in sysagents:
-                ap.register(a)
-        for i,c in enumerate(columns[:50]):
-            oldsysagents = sysagents[:]
-            sysagents = getCrossings(img[top:bottom,c],sysagents,StaffLineAgent,M,horz=c,fixAgents=True)
-            sysagents = mergeAgents(sysagents)
-
-            if ap != None and n == 3:
-                sagentsnew = set(sysagents)
-                setagents = set(oldsysagents)
-                born = sagentsnew.difference(setagents)
-                died = setagents.difference(sagentsnew)
-                ap.reset()
-                for a in born:
-                    ap.register(a)
-                for a in died:
-                    ap.unregister(a)
-                for a in sysagents:
-                    a.mean[0] += top
-                    a.points[:,0] += top
-                    ap.drawAgentGood(a,-3000,3000)
-                    a.mean[0] -= top
-                    a.points[:,0] -= top
-                print('drew agents',len(sysagents))
-                ap.paintVLine(c)
-                f0,ext = os.path.splitext(fn)
-                print(f0,ext)
-                #ap.writeImage(fn.replace('.png','-{0:04d}-c{1}.png'.format(i,c)))
-                ap.writeImage(f0+'-sys{2}-{0:04d}-c{1}'.format(n*1000+i,c,n)+'.png')
-    
-        for a in sysagents:
-            a.mean[0] += top
-            a.points[:,0] += top
-        newagents.extend(sysagents)
-
-        
-    return newagents
-
-def findStaffLinesInPart(img,t,b,agentType,bins):
-    N,M = img.shape
-    vsums = nu.sum(img[t:b,:],0)
-    columns,colBins = selectColumns(vsums,bins)
-    agents = []
-    for i,c in enumerate(columns[:bins]):
-        print('column',i)
-        agents = getCrossings(img[t:b,c],agents,agentType,M,horz=c)
-
-        if len(agents)> 1:
-            agents = mergeAgents(agents)
-    return agents,columns[:bins]
-    
 
 def findStaffLines(img,fn):
     N,M = img.shape
@@ -348,11 +258,6 @@ def findStaffLines(img,fn):
     ap.writeImage(fn)
     return [agents[k*10:(k+1)*10] for k in range(len(agents)/10)]
 
-#def findStaffLines(img,fn):
-#    N,M = img.shape
-
-from imageUtil import findValleys, smooth, normalize
-from scipy.stats import distributions
 
 def getOffset(v1,v2,dx,maxAngle):
     #kmax = min(70,int(1.5*nu.ceil(dx*nu.tan(maxAngle*nu.pi))))
@@ -392,30 +297,18 @@ def getter(f):
     
 def assessStaffLineAgents(iagents,M):
     agents = sortAgents(iagents,5)
-    print('sort Result')
     for a in agents:
         print(a)
     meansAngles = nu.array([(a.mean[0],a.mean[1],a.getAngle()) for a in agents])
-    print('meansAngles')
     x = meansAngles[:,0]+(M/2-meansAngles[:,1])*nu.tan(meansAngles[:,2]*nu.pi)
-    print(nu.column_stack((meansAngles,x)))
     xs = nu.sort(x)
-    print('xs')
-    print(xs)
     dxs = nu.diff(xs)
     l0 = nu.median(dxs)
     checkIdx = nu.ones(len(agents)-1,nu.bool)
     checkIdx[nu.arange(5,len(agents),5)-1] = False
     #thr = l0/20.
     thr = l0/10.
-    print('l0, thr',l0,thr)
-    print('dxs')
-    print(dxs)
-    print('checkIdx')
-    print(checkIdx)
     result =nu.std(dxs[checkIdx]) < thr
-    print('result')
-    print(result)
     return result, agents
 
 class VerticalSegment(object):
@@ -428,10 +321,19 @@ class VerticalSegment(object):
         self.nAngleBins = nAngleBins
         self.colGroups = colGroups
 
+
+    def getStats(self):
+        vsum = len(nu.nonzero(self.getVSums())[0])
+        hsum = len(nu.nonzero(self.getHSums())[0])
+        height = (self.bottom-self.top)
+        print('vsum',vsum,
+              'hsum',hsum,
+              'h',height)
+        return vsum, hsum, height
+
     @getter
     def getStaffLines(self):
         agents = []
-        #print(nu.sum(self.getVSums()))
         defAngle = self.getAngle()
         cols = selectColumns(self.getVSums(),self.colGroups)[0]
         StaffAgent = makeAgentClass(targetAngle=defAngle,
@@ -443,37 +345,42 @@ class VerticalSegment(object):
         f0 = os.path.splitext(self.scrImage.fn)[0]
         print('default angle for this staff',defAngle)
         stop = False
+        finalStage = False
+        nFinalRuns = 10
         for i,c in enumerate(cols):
+            if nFinalRuns == 0:
+                break
             agentsnew = assignToAgents(self.getImgSegment()[:,c],agents,StaffAgent,
-                                       self.scrImage.getWidth(),horz=c)
+                                       self.scrImage.getWidth(),horz=c,fixAgents=finalStage)
             if len(agentsnew) > 1:
                 agentsnew = mergeAgents(agentsnew)
             
             agents = agentsnew
             agents.sort(key=lambda x: -x.score)
 
-            if len(agents) > 5 and i > 20:
-                stop,selection = assessStaffLineAgents(agents,self.scrImage.getWidth())
-            if stop:
-                agents = selection
-                break
+            if len(agents) > 5 and i > 50 and not finalStage:
+                finalStage,selection = assessStaffLineAgents(agents,self.scrImage.getWidth())
+                if finalStage:
+                    agents = selection
+            
+            if finalStage:
+                nFinalRuns -= 1
 
             if draw:
                 self.scrImage.ap.reset()
                 self.scrImage.ap.paintVLine(c)
-            
-            for a in agents:
-                print(a)
-                if draw:
+                for a in agents:
                     if not self.scrImage.ap.isRegistered(a):
                         self.scrImage.ap.register(a)
                     self.scrImage.ap.drawAgentGood(a,-3000,3000)
-            if draw:
                 self.scrImage.ap.writeImage(f0+'-{0:04d}-c{1}'.format(i,c)+'.png')
         return agents
 
     def getImgSegment(self):
         return self.scrImage.getImg()[self.top:self.bottom,:]
+
+    def getHSums(self):
+        return self.scrImage.getHSums()[self.top:self.bottom]
 
     @getter
     def getVSums(self):
@@ -507,11 +414,24 @@ class VerticalSegment(object):
         return (float(self.maxAngle)/self.nAngleBins)-\
             self.maxAngle+i*2.0*self.maxAngle/self.nAngleBins
 
+def selectMajority(stats,N,M):
+    meds = nu.median(stats[:,:-1],0)
+    #ref = nu.max(stats[:,:-1],0)-nu.min(stats[:,:-1],0)
+    ref = nu.array((N/stats.shape[0],M))
+    nstats = stats[:,:-1]-meds
+    nstats[nstats>0] = 0
+    dref = nu.sum(ref**2)**.5
+    ndists = (nu.sum(nstats**2,1)**.5)/dref
+    snstats = nu.column_stack((nstats,stats[:,-1]))
+    snstats = nu.vstack((snstats,nu.append(-ref,-1)))
+    nu.savetxt('/tmp/ns.txt',snstats,fmt='%d')
+    return nu.nonzero(nu.logical_not(ndists < .2))[0]
+
 class ScoreImage(object):
     def __init__(self,fn):
         self.fn = fn
         self.typicalNrOfSystemPerPage = 6
-        self.maxAngle = 2/180.
+        self.maxAngle = 1.5/180.
         self.nAnglebins = 600
         self.colGroups = 11
         self.bgThreshold = 20
@@ -536,9 +456,24 @@ class ScoreImage(object):
         return self.getImg().shape[0]
 
     def drawImage(self):
+        stats = []
+        for i,vs in enumerate(self.getVSegments()):
+            self.ap.paintHLine(vs.bottom,step=2)
+            stats.append(list(vs.getStats())+[i])
+        stats = nu.array(stats,nu.int)
+        print(stats)
+        stats = stats[:,(0,1,3)]
+        nu.savetxt('/tmp/s.txt',stats,fmt='%d')
+
+        exclude = selectMajority(stats,self.getHeight(),self.getWidth())
         groups = []
-        for vs in self.getVSegments():
-            groups.append(vs.getStaffLines())
+        for i,vs in enumerate(self.getVSegments()):
+            if i in exclude:
+                for j in range(vs.top,vs.bottom,4):
+                    self.ap.paintHLine(j,alpha=0.9,step=4)
+            else:
+                groups.append(vs.getStaffLines())
+
         for i,g in enumerate(groups):
             print('group',i)
             for a in g:
@@ -579,10 +514,11 @@ if __name__ == '__main__':
     fn = sys.argv[1]
 
     #img[img>= bgThreshold] = 255
-
     #findStaffLines(img[1500:,:],fn)
+
     si = ScoreImage(fn)
     si.drawImage()
+
     sys.exit()
     groups = []
     for vs in si.getVSegments():
