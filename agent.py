@@ -204,30 +204,22 @@ class Agent(object):
         return clone
 
     def __str__(self):
-        #return 'Agent: {id}; angle: {8:03f}; da: {3:03f}; error: {err:03f} age: {1}; points: {2}; score: {4}; mean: {5}; width: {6}'.format(id=self.id,err=self.error,self.age,self.points.shape[0],self.getAngle(),self.score,self.mean,self.getLineWidth(),self.id,self.)
         return 'Agent: {id}; angle: {angle:0.4f} ({ta:0.4f}+{ad:0.4f}); error: {err:0.3f} age: {age}; npts: {pts}; score: {score}; mean: {mean}'\
             .format(id=self.id,err=self.error,angle=self.getAngle(),ta=self.targetAngle,ad=self.angleDev,
                     age=self.age,pts=self.points.shape[0],score=self.score,mean=self.mean)
 
-    def mergeable(self,other,track=False):
+    def mergeable(self,other):
         e0 = getError(other.points-self.mean,self.getAngle())
         e1 = getError(self.points-other.mean,other.getAngle())
-        e = (e0+e1)/2.0
-        if track:
-            print('errors')
-            print(e0,e1,e)
-        #return e if e < self.maxError else nu.inf
-        return e
-
-    #def getPoints(self):
-    #    return self.points+nu.array([self.offset,0])
-
+        return (e0+e1)/2.0
+    
     def getAngleCriticality(self):
         return nu.abs(self.angleDev)/self.maxAngleDev
     def getErrorCriticality(self):
         return self.error/self.maxError
         
     def mergeableNew(self,other,track=False):
+        # UNUSED
         assert self.targetAngle == other.targetAngle
         points = nu.vstack((self.points,other.points))
         mean = nu.mean(points,0)
@@ -254,8 +246,6 @@ class Agent(object):
         self.lw = nu.median(self.lineWidth)
         self.lwstd = nu.std(self.lineWidth)
     
-    #def getAngle(self):
-    #    return self.targetAngle + (self.angleDev-self.targetAngle+.5)%1-.5
     def getAngle(self):
         return self.targetAngle + self.angleDev
 
@@ -264,20 +254,15 @@ class Agent(object):
     def getDrawMean(self):
         return self.mean+nu.array([self.offset,0])
 
-    def merge(self,other,track=False):
+    def getMiddle(self,M):
+        "get Vertical position of agent at the horizontal center of the page of width M" 
+        x = self.mean[0]+(M/2.0-self.mean[1])*nu.tan(self.getAngle()*nu.pi)
+        return x
+
+    def merge(self,other):
         #self.points = nu.vstack((self.points,other.points))
-        if track:
-            print(self.points)
-            print(other.points)
         self.points = nu.array(tuple(set([tuple(y) for y in nu.vstack((self.points,other.points))])))
-
-        if track:
-            print(self.points)
-
         self.lineWidth = nu.append(self.lineWidth,other.lineWidth)
-        if track:
-            print('merge: self, other, new mean')
-            print(self.mean,other.mean,nu.mean(self.points,0))
         self.mean = nu.mean(self.points,0)
         self.angleDev = ((tls(self.points-self.mean)-self.targetAngle)+.5)%1-.5
         self.error = getError(self.points-self.mean,self.getAngle())/self.points.shape[0]
@@ -308,10 +293,8 @@ class Agent(object):
         errorOK = self.error <= self.maxError
         successRateOK = self.score >= self.minScore
         r = not all((angleOK,errorOK,successRateOK))
-        if r:
-            print('Died: {0}; angleOK: {1}; errorOK: {2}, scoreOK: {3}'.format(self,angleOK,errorOK,successRateOK))
-            #print('a,ta',self.angleDev,self.targetAngle)
-            #print('adev,maxadev',nu.abs(self.getAngle()-self.targetAngle),self.maxAngleDev)
+        #if r:
+        #    print('Died: {0}; angleOK: {1}; errorOK: {2}, scoreOK: {3}'.format(self,angleOK,errorOK,successRateOK))
         return r
   
     def getIntersection(self,xy0,xy1):

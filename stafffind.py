@@ -18,7 +18,7 @@ def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False):
         candidates = [tuple(data)]
     else:
         return agents
-    print('candidates',candidates)
+    #print('candidates',candidates)
     if vert is not None:
         candidates = [[nu.array([vert,horz]) for horz in horzz] for horzz in candidates]
     elif horz is not None:
@@ -32,8 +32,7 @@ def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False):
     if len(agents) == 0:
         unadopted.extend(range(len(candidates)))
     else:
-        print('agents, candidates',len(agents),len(candidates))
-
+        #print('agents, candidates',len(agents),len(candidates))
         bids = nu.zeros((len(candidates),len(agents)))
         for i,c in enumerate(candidates):
             bids[i,:] = nu.array([nu.abs(a.bid(*c)) for a in agents])
@@ -92,21 +91,10 @@ def mergeAgents(agents):
                 #cAngle = (nu.arctan2(*(agents[i].mean-agents[j].mean))%nu.pi)/nu.pi
                 cAngle = ((nu.arctan2(*(agents[i].mean-agents[j].mean))/nu.pi)+1)%1
                 # fast check: are means in positions likely for merge?
-                track = False #2807 < agents[i].mean[0] < 2812 and 2807 < agents[j].mean[0] < 2812
-                if track:
-                    print('merge')
-                    print(agents[i])
-                    print(agents[j])
-                    print('cangle',cAngle)
-                    print(((cAngle-agents[i].targetAngle+.5)%1-.5),agents[i].maxAngleDev)
-                    print(((cAngle-agents[i].targetAngle+.5)%1-.5),agents[i].maxAngleDev)
                 if True: #((cAngle-agents[i].targetAngle+.5)%1-.5) < agents[i].maxAngleDev:
                 #if nu.abs(cAngle-agents[i].targetAngle) < agents[i].maxAngleDev:
                     # yes, do further check
-                    if track:
-                        print('passed angle check, continuing')
-                        print('max error',agents[i].maxError)
-                    pdist.append(agents[i].mergeable(agents[j],track))
+                    pdist.append(agents[i].mergeable(agents[j]))
                 else:
                     # no, exclude
                     pdist.append(agents[i].maxError+1)
@@ -120,8 +108,7 @@ def mergeAgents(agents):
         else:
             a = agents[v[0]]
             for i in v[1:]:
-                track = False#2807 < a.mean[0] < 2812 and 2807 < agents[i].mean[0] < 2812
-                a.merge(agents[i],track)
+                a.merge(agents[i])
             newagents.append(a)
     return newagents
 
@@ -139,125 +126,6 @@ def sortAgents(agents,k=10):
     na = agents[:k*nsystems]
     print('keeping',len(na),'agents')
     return na
-
-def assessLines(agents,N,M,show=False):
-    # check if 4 nn are equidistant for each line
-    print(len(agents))
-    meansAngles = nu.array([(a.mean[0],a.mean[1],((a.angle-a.targetAngle+.5)%1-.5)*nu.pi) for a in agents])
-    x = meansAngles[:,0]+(M/2-meansAngles[:,1])*nu.tan(meansAngles[:,2]*nu.pi)
-    xs = nu.sort(x)
-    dxs = nu.diff(xs)
-    l0 = nu.median(dxs)
-    checkIdx = nu.ones(len(agents)-1,nu.bool)
-    checkIdx[nu.arange(5,len(agents),5)-1] = False
-    #thr = l0/20.
-    thr = l0/10.
-    return nu.std(dxs[checkIdx]) < thr
-
-def findStaffLines(img,fn):
-    N,M = img.shape
-    
-    bins = 9
-    vsums = nu.sum(img,0)
-
-    columns,colBins = selectColumns(vsums,bins)
-
-    splitParts = 5
-    try:
-        K = int(N/splitParts)
-    except ZeroDivisionError:
-        K = 1
-    agents = []
-    seenCols = set([])
-    for k in range(splitParts):
-        t = max(0,k*K)
-        b = min(N,(k+1)*K)
-        pagents,doneCols = findStaffLinesInPart(img,t,b,StaffLineAgent,bins)
-        seenCols = set.union(seenCols,doneCols)
-        for a in pagents:
-            a.mean[0] += t
-            a.points[:,0] += t
-        agents.extend(pagents)
-    #agents = mergeAgents(agents)    
-
-    draw = True
-    #draw = False
-    if draw:
-        ap = AgentPainter(img)
-        for a in agents:
-            ap.register(a)
-
-    #taprev= []
-
-    for i,c in enumerate(columns):
-        if False: #c in seenCols:
-            continue
-        print('column',i)
-        agentsnew = getCrossings(img[:,c],agents,StaffLineAgent,M,horz=c)
-
-        if len(agentsnew)> 1:
-            agentsnew = mergeAgents(agentsnew)
-
-        if i > 50 and len(agentsnew)> 10:
-            agentsnew = sortAgents(agentsnew[:])
-            print('agents')
-            for j,a in enumerate(sorted(sorted(agentsnew,key=lambda x: x.mean[0]),key=lambda x: -x.score)):
-                print(j),
-                print(a)
-            r = assessLines(agentsnew,N,M,i==27)
-            #r = True
-            if r:
-                if draw:
-                    ap.reset()
-                agents = agentsnew[:]
-                break
-        else:
-            print('agents')
-            for j,a in enumerate(sorted(sorted(agentsnew,key=lambda x: x.mean[0]),key=lambda x: -x.score)):
-                print(j),
-                print(a)
-
-        if draw:
-            sagentsnew = set(agentsnew)
-            setagents = set(agents)
-            born = sagentsnew.difference(setagents)
-            died = setagents.difference(sagentsnew)
-            ap.reset()
-            for a in born:
-                ap.register(a)
-            for a in died:
-                ap.unregister(a)
-            for a in agentsnew:
-                ap.drawAgentGood(a,-3000,3000)
-            print('drew agents',len(agentsnew))
-            ap.paintVLine(c)
-            f0,ext = os.path.splitext(fn)
-            print(f0,ext)
-            #ap.writeImage(fn.replace('.png','-{0:04d}-c{1}.png'.format(i,c)))
-            ap.writeImage(f0+'-{0:04d}-c{1}'.format(i,c)+'.png')
-        
-        # DON'T DELETE
-        agents = agentsnew[:]
-
-    agents = finalizeAgents(agents,img,bins,fn,ap if draw else None)
-    if not draw:
-        aa = [agents[k*10:(k+1)*10] for k in range(len(agents)/10)]
-        for x,ab in enumerate(aa):
-            print('staff',x)
-            for a in ab:
-                print(a.mean)
-        return aa
-
-    j = 0
-    for a in agents:
-        if a.points.shape[0] > 1:
-            print('{0} {1}'.format(j,a))
-            j += 1
-            ap.register(a)
-            ap.drawAgentGood(a)
-    ap.writeImage(fn)
-    return [agents[k*10:(k+1)*10] for k in range(len(agents)/10)]
-
 
 def getOffset(v1,v2,dx,maxAngle):
     #kmax = min(70,int(1.5*nu.ceil(dx*nu.tan(maxAngle*nu.pi))))
@@ -292,11 +160,8 @@ def getter(f):
 #         self.valuedict[f] = f(self,*args,**kwargs)
 #     return _setter
 
-#def getBestSubset(agents,k=5):
-#    k
-    
-def assessStaffLineAgents(iagents,M):
-    agents = sortAgents(iagents,5)
+def assessStaffLineAgents(iagents,M,nPerStaff):
+    agents = sortAgents(iagents,nPerStaff)
     for a in agents:
         print(a)
     meansAngles = nu.array([(a.mean[0],a.mean[1],a.getAngle()) for a in agents])
@@ -305,7 +170,7 @@ def assessStaffLineAgents(iagents,M):
     dxs = nu.diff(xs)
     l0 = nu.median(dxs)
     checkIdx = nu.ones(len(agents)-1,nu.bool)
-    checkIdx[nu.arange(5,len(agents),5)-1] = False
+    checkIdx[nu.arange(nPerStaff,len(agents),nPerStaff)-1] = False
     #thr = l0/20.
     thr = l0/10.
     result =nu.std(dxs[checkIdx]) < thr
@@ -320,17 +185,20 @@ class VerticalSegment(object):
         self.maxAngle = maxAngle
         self.nAngleBins = nAngleBins
         self.colGroups = colGroups
+        self.nPerStaff = 5
+        self.containsStaff = True
 
-
-    def getStats(self):
+    def getVHSums(self):
         vsum = len(nu.nonzero(self.getVSums())[0])
         hsum = len(nu.nonzero(self.getHSums())[0])
-        height = (self.bottom-self.top)
-        print('vsum',vsum,
-              'hsum',hsum,
-              'h',height)
-        return vsum, hsum, height
+        return vsum, hsum
 
+    def flagNonStaff(self):
+        self.containsStaff = False
+
+    def hasStaff(self):
+        return self.containsStaff
+        
     @getter
     def getStaffLines(self):
         agents = []
@@ -359,7 +227,8 @@ class VerticalSegment(object):
             agents.sort(key=lambda x: -x.score)
 
             if len(agents) > 5 and i > 50 and not finalStage:
-                finalStage,selection = assessStaffLineAgents(agents,self.scrImage.getWidth())
+                finalStage,selection = assessStaffLineAgents(agents,self.scrImage.getWidth(),
+                                                             self.nPerStaff)
                 if finalStage:
                     agents = selection
             
@@ -374,7 +243,9 @@ class VerticalSegment(object):
                         self.scrImage.ap.register(a)
                     self.scrImage.ap.drawAgentGood(a,-3000,3000)
                 self.scrImage.ap.writeImage(f0+'-{0:04d}-c{1}'.format(i,c)+'.png')
-        return agents
+        agents.sort(key=lambda x: x.getMiddle(self.scrImage.getWidth()))
+        return [agents[k*self.nPerStaff:(k+1)*self.nPerStaff] 
+                for k in range(len(agents)/self.nPerStaff)]
 
     def getImgSegment(self):
         return self.scrImage.getImg()[self.top:self.bottom,:]
@@ -414,18 +285,90 @@ class VerticalSegment(object):
         return (float(self.maxAngle)/self.nAngleBins)-\
             self.maxAngle+i*2.0*self.maxAngle/self.nAngleBins
 
-def selectMajority(stats,N,M):
-    meds = nu.median(stats[:,:-1],0)
-    #ref = nu.max(stats[:,:-1],0)-nu.min(stats[:,:-1],0)
-    ref = nu.array((N/stats.shape[0],M))
-    nstats = stats[:,:-1]-meds
-    nstats[nstats>0] = 0
+def identifyNonStaffSegments(vertSegments,N,M):
+    """Identify vertical segments that are unlikely to contain staffs
+    """
+    vhsums = nu.array([vs.getVHSums() for vs in vertSegments],nu.int)
+    meds = nu.median(vhsums,0)
+    ref = nu.array((N/vhsums.shape[0],M))
+    nvhsums = vhsums-meds
+    nvhsums[nvhsums>0] = 0
     dref = nu.sum(ref**2)**.5
-    ndists = (nu.sum(nstats**2,1)**.5)/dref
-    snstats = nu.column_stack((nstats,stats[:,-1]))
-    snstats = nu.vstack((snstats,nu.append(-ref,-1)))
-    nu.savetxt('/tmp/ns.txt',snstats,fmt='%d')
-    return nu.nonzero(nu.logical_not(ndists < .2))[0]
+    ndists = (nu.sum(nvhsums**2,1)**.5)/dref
+    nonStaff = nu.nonzero(nu.logical_not(ndists < .2))[0]
+    #nvhsums = nu.column_stack((nvhsums,vhsums[:,-1]))
+    #nvhsums = nu.vstack((nvhsums,nu.append(-ref,-1)))
+    #nu.savetxt('/tmp/ns.txt',nvhsums,fmt='%d')
+    print('of {0} segments, items {1} were identified as non-staff'.format(len(vertSegments),nonStaff))
+    return nonStaff
+
+class Staff(object):
+    def __init__(self,scoreImage,staffLineAgents):
+        self.scrImage = scoreImage
+        self.staffLineAgents = staffLineAgents
+        self.staffLineAgents.sort(key=lambda x: x.getMiddle(self.scrImage.getWidth()))
+    def __str__(self):
+        return 'Staff {0}; nAgents: {1}; avggap: {2}'\
+            .format(self.__hash__(),len(self.staffLineAgents),self.getStaffLineDistance())
+    def draw(self):
+        for agent in self.staffLineAgents:
+            self.scrImage.ap.register(agent)
+            self.scrImage.ap.drawAgentGood(agent,-self.scrImage.getWidth(),self.scrImage.getWidth())
+
+    def getAngle(self):
+        print('staff angles',[(a.getAngle()+.5)%1-.5 for a in self.staffLineAgents])
+        return nu.mean([(a.getAngle()+.5)%1-.5 for a in self.staffLineAgents])
+
+    def getTopBottom(self):
+        lTop = nu.array((0,0))
+        lBot = nu.array((self.scrImage.getHeight()-1,0))
+        rTop = nu.array((0,self.scrImage.getWidth()-1))
+        rBot = nu.array((self.scrImage.getHeight()-1,self.scrImage.getWidth()-1))
+        x0offset = self.staffLineAgents[0].offset
+        x1offset = self.staffLineAgents[-1].offset
+        xx = nu.sort([self.staffLineAgents[0].getIntersection(lTop,lBot)[0]+x0offset,
+                      self.staffLineAgents[0].getIntersection(rTop,rBot)[0]+x0offset,
+                      self.staffLineAgents[-1].getIntersection(lTop,lBot)[0]+x1offset,
+                      self.staffLineAgents[-1].getIntersection(rTop,rBot)[0]+x1offset])
+        return xx[0],xx[-1]
+
+    @getter
+    def getStaffLineDistance(self):
+        return nu.mean(nu.diff([a.getMiddle(self.scrImage.getWidth()) for a in self.staffLineAgents]))
+
+class System(object):
+    def __init__(self,scoreImage,staffs):
+        self.scrImage = scoreImage
+        self.staffs = staffs
+
+    def draw(self):
+        for staff in self.staffs:
+            staff.draw()
+
+    def getStaffAngle(self):
+        return nu.mean([s.getAngle() for s in self.staffs])
+
+    #def getVSums(self):
+    #    self.scrImage.getVSums()[self.staffs[0].top]
+
+    def getBarLines(self):
+        agents = []
+        defBarAngle = (self.getStaffAngle()+.5)%1
+        print('default staff angle for this system',self.getStaffAngle())
+        print('default bar angle for this system',defBarAngle)
+        assert defBarAngle >= 0
+        BarAgent = makeAgentClass(targetAngle=defBarAngle,
+                                  maxAngleDev=2/180.,
+                                  maxError=3,
+                                  minScore=-2,
+                                  offset=0)
+        print('default angle for this system',defBarAngle)
+        #cols = selectColumns(self.getVSums(),self.colGroups)[0]
+        systemTop = self.staffs[0].getTopBottom()[0]
+        systemBot = self.staffs[1].getTopBottom()[1]
+        cols = selectColumns(self.scrImage.getHSums()[systemTop:systemBot],3)[0]
+        print(cols)
+
 
 class ScoreImage(object):
     def __init__(self,fn):
@@ -436,18 +379,6 @@ class ScoreImage(object):
         self.colGroups = 11
         self.bgThreshold = 20
         self.ap = AgentPainter(self.getImg())
-    
-
-    def getSystems(self):
-        # for each segment: split stafflines into groups of 5 (=staffs)
-        # join staffs over all segments
-        # filter out narrower staffs
-        # join subsequent pairs of staffs (=systems)
-
-        # staff attributes needed: 
-        # * inter-staffline-width
-        for vs in self.getVSegments():
-            vs.getStaffLines()
 
     @getter
     def getImg(self):
@@ -467,31 +398,68 @@ class ScoreImage(object):
     def getHeight(self):
         return self.getImg().shape[0]
 
+    @getter
+    def getStaffs(self):
+        # staffs get selected if their avg staffline distance (ASD) is
+        # larger than thresholdPropOfMax times the largest ASD over all staffs
+        thresholdPropOfMax = .75
+        staffs = []
+        for i,vs in enumerate(self.getStaffSegments()):
+            print('Processing staff segment {0}'.format(i))
+            staffs.extend([Staff(self,s) for s in vs.getStaffLines()])
+        for staff in staffs:
+            print(staff)
+        slDists = nu.array([staff.getStaffLineDistance() for staff in staffs])
+        print('avg staff line distance per staff:')
+        print(slDists)
+        maxDist = nu.max(slDists)
+        print('original nr of staffs',len(staffs))
+        staffs = list(nu.array(staffs)[slDists >= thresholdPropOfMax*maxDist])
+        print('new nr of staffs',len(staffs))
+        if len(staffs)%2 != 0:
+            print('WARNING: detected unequal number of staffs!')
+            print('TODO: retry to find an equal number of staffs')
+        return staffs
+
+    @getter
+    def getSystems(self):
+        staffs = self.getStaffs()
+        return [System(self,(staffs[i],staffs[i+1])) for i in range(0,len(staffs),2)]
+
     def drawImage(self):
-        stats = []
+        # draw segment boundaries
         for i,vs in enumerate(self.getVSegments()):
             self.ap.paintHLine(vs.bottom,step=2)
-            stats.append(list(vs.getStats())+[i])
-        stats = nu.array(stats,nu.int)
-        print(stats)
-        stats = stats[:,(0,1,3)]
-        nu.savetxt('/tmp/s.txt',stats,fmt='%d')
 
-        exclude = selectMajority(stats,self.getHeight(),self.getWidth())
-        groups = []
+        for vs in self.getNonStaffSegments():
+            for j in range(vs.top,vs.bottom,4):
+                self.ap.paintHLine(j,alpha=0.9,step=4)
+
+        for i,system in enumerate(self.getSystems()):
+            if i == 2:
+                sys.stdout.write('drawing system {0}\n'.format(i))
+                sys.stdout.flush()
+                system.draw()
+                system.getBarLines()
+        self.ap.writeImage(self.fn)
+
+    def drawImageSelection(self,selection):
+        # draw segment boundaries
         for i,vs in enumerate(self.getVSegments()):
-            if i in exclude:
-                for j in range(vs.top,vs.bottom,4):
-                    self.ap.paintHLine(j,alpha=0.9,step=4)
-            else:
-                groups.append(vs.getStaffLines())
+            self.ap.paintHLine(vs.bottom,step=2)
 
-        for i,g in enumerate(groups):
-            print('group',i)
-            for a in g:
-                self.ap.register(a)
-                print(a)
-                self.ap.drawAgentGood(a,-2600,2600)
+        for vs in self.getNonStaffSegments():
+            for j in range(vs.top,vs.bottom,4):
+                self.ap.paintHLine(j,alpha=0.9,step=4)
+
+        ss = self.getStaffSegments()
+        
+        for i in selection:
+            staffs = [Staff(self,x) for x in ss[i].getStaffLines()]
+            system = System(self,staffs)
+            system.draw()
+            system.getBarLines()
+            print(system)
         self.ap.writeImage(self.fn)
 
     @getter
@@ -510,7 +478,18 @@ class ScoreImage(object):
                                              colGroups = self.colGroups,
                                              maxAngle = self.maxAngle,
                                              nAngleBins = self.nAnglebins))
+        nonStaff = identifyNonStaffSegments(vsegments,self.getHeight(),self.getWidth())
+        for i in nonStaff:
+            vsegments[i].flagNonStaff()
         return vsegments
+
+    def getNonStaffSegments(self):
+        return [vs for vs in self.getVSegments() if not vs.hasStaff()]
+
+    def getStaffSegments(self):
+        return [vs for vs in self.getVSegments() if vs.hasStaff()]
+        #d = partition(lambda x: x.hasStaff(),self.getVSegments())
+        #return d[True], d[False]
 
     @getter    
     def getWeights(self):
@@ -525,30 +504,13 @@ class ScoreImage(object):
 if __name__ == '__main__':
     fn = sys.argv[1]
 
-    #img[img>= bgThreshold] = 255
-    #findStaffLines(img[1500:,:],fn)
-
     si = ScoreImage(fn)
+    #staffs = si.getStaffs()
+    #print(staffs)
     si.drawImage()
-
+    #si.drawImageSelection([5])
+    #self.getVSegments()
     sys.exit()
-    groups = []
-    for vs in si.getVSegments():
-        #print(180*vs.getAngle())
-        groups.append(vs.getStaffLines())
-    for i,g in enumerate(groups):
-        print('group',i)
-        for a in g:
-            print(a)
-
-    #print(si.getHSums())
-    #print(si.getHSums())
-    #print(si.getHSums())
-    #si.estimateSegmentAngles()
-    #si.getVSegments()[0].getStaffLines()
-    sys.exit()
-
-    agentfn = os.path.join('/tmp/',os.path.splitext(os.path.basename(fn))[0]+'.agents')
-    agents = findStaffLines(img,fn)
-    with open(agentfn,'w') as f:
-        pickle.dump(agents,f)
+    #agentfn = os.path.join('/tmp/',os.path.splitext(os.path.basename(fn))[0]+'.agents')
+    #with open(agentfn,'w') as f:
+    #    pickle.dump(agents,f)
