@@ -8,6 +8,7 @@ from imageUtil import writeImageData, getPattern, findValleys, smooth, normalize
 from utilities import argpartition, partition, makeColors
 from main import convolve
 from agent import Agent, AgentPainter, makeAgentClass
+from functools import wraps
 
 def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False):
     data = nu.nonzero(v)[0]
@@ -144,6 +145,7 @@ def getOffset(v1,v2,dx,maxAngle):
 
 def getter(f):
     "Stores the value for later use"
+    @wraps(f)
     def _getter(self):
         if not hasattr(self,'valuedict'):
             self.valuedict = {}
@@ -319,6 +321,7 @@ class Staff(object):
         print('staff angles',[(a.getAngle()+.5)%1-.5 for a in self.staffLineAgents])
         return nu.mean([(a.getAngle()+.5)%1-.5 for a in self.staffLineAgents])
 
+    @getter
     def getTopBottom(self):
         lTop = nu.array((0,0))
         lBot = nu.array((self.scrImage.getHeight()-1,0))
@@ -336,10 +339,65 @@ class Staff(object):
     def getStaffLineDistance(self):
         return nu.mean(nu.diff([a.getMiddle(self.scrImage.getWidth()) for a in self.staffLineAgents]))
 
+def makeFlatIdx(v,W):
+    pass
+
 class System(object):
     def __init__(self,scoreImage,staffs):
         self.scrImage = scoreImage
         self.staffs = staffs
+
+    @getter
+    def getLowerLeft(self):
+        meanLower = self.staffs[1].staffLineAgents[-1].getDrawMean()
+        return nu.array((meanLower[0]-meanLower[1]*nu.tan(nu.pi*self.getStaffAngle()),0))
+    
+    @getter
+    def getUpperLeft(self):
+        meanLower = self.staffs[0].staffLineAgents[0].getDrawMean()
+        return nu.array((meanLower[0]-meanLower[1]*nu.tan(nu.pi*self.getStaffAngle()),0))
+
+    @getter
+    def getCorrectedImgSegment(self):
+        systemTop = self.staffs[0].getTopBottom()[0]
+        systemBot = self.staffs[1].getTopBottom()[1]
+        extra = 200
+        sysHeight = (self.getLowerLeft()-self.getUpperLeft())[0]+2*extra
+        w1 = sysHeight*nu.tan(nu.pi*self.getStaffAngle())
+        w2 = self.scrImage.getWidth()/nu.cos(nu.pi*self.getStaffAngle())
+        if w1 < 0:
+            # start late
+            rng = nu.arange(int(nu.ceil(-w1)),int(nu.floor(w2)))
+        else:
+            # stop early
+            rng = nu.arange(0,int(nu.floor(w2-w1)))
+        hrng = nu.arange(sysHeight)
+        col = nu.column_stack((-hrng*nu.cos(nu.pi*self.getStaffAngle()),
+                                hrng*nu.sin(nu.pi*self.getStaffAngle())))
+        row = nu.column_stack((rng*nu.sin(nu.pi*self.getStaffAngle()),
+                               rng*nu.cos(nu.pi*self.getStaffAngle())))+self.getLowerLeft()+nu.array((extra,0))
+        z = nu.zeros((col.shape[0],row.shape[0]),nu.uint8)
+        for i,r in enumerate(row):
+            rc = r+col
+            xf = nu.floor(rc[:,0]).astype(nu.int)
+            xc = nu.ceil(rc[:,0]).astype(nu.int)
+            yf = nu.floor(rc[:,1]).astype(nu.int)
+            yc = nu.ceil(rc[:,1]).astype(nu.int)
+            wxc = rc[:,0]%1
+            wxf = 1-wxc
+            wyc = rc[:,1]%1
+            wyf = 1-wyc
+            
+            z[::-1,i] = \
+                (((wxf+wyf)*self.scrImage.getImg().flat[self.scrImage.getWidth()*xf+yf] + \
+                (wxf+wyc)*self.scrImage.getImg().flat[self.scrImage.getWidth()*xf+yc] + \
+                (wxc+wyf)*self.scrImage.getImg().flat[self.scrImage.getWidth()*xc+yf] + \
+                (wxc+wyc)*self.scrImage.getImg().flat[self.scrImage.getWidth()*xc+yc])/4.0).astype(nu.uint8)
+            #v = nu.round(rc).astype(nu.int)
+            #z[::-1,i] = self.scrImage.getImg().flat[self.scrImage.getWidth()*v[:,0]+v[:,1]]
+        #myap = AgentPainter(z)
+        #myap.writeImage('tst')
+        return z
 
     def draw(self):
         for staff in self.staffs:
@@ -351,24 +409,50 @@ class System(object):
     #def getVSums(self):
     #    self.scrImage.getVSums()[self.staffs[0].top]
 
+    @getter
+    def getHSums(self):
+        return nu.sum(self.getCorrectedImgSegment(),1)
+
     def getBarLines(self):
         agents = []
-        defBarAngle = (self.getStaffAngle()+.5)%1
+        defBarAngle = .5 #(self.getStaffAngle()+.5)%1
         print('default staff angle for this system',self.getStaffAngle())
         print('default bar angle for this system',defBarAngle)
         assert defBarAngle >= 0
         BarAgent = makeAgentClass(targetAngle=defBarAngle,
                                   maxAngleDev=2/180.,
-                                  maxError=3,
-                                  minScore=-2,
+                                  maxError=.5,
+                                  minScore=-5,
                                   offset=0)
         print('default angle for this system',defBarAngle)
         #cols = selectColumns(self.getVSums(),self.colGroups)[0]
         systemTop = self.staffs[0].getTopBottom()[0]
         systemBot = self.staffs[1].getTopBottom()[1]
-        cols = selectColumns(self.scrImage.getHSums()[systemTop:systemBot],3)[0]
-        print(cols)
+        rows = selectColumns(self.getHSums(),3)[0] # sounds funny, change name of function
+        finalStage = False
+        k = 0
+        for i,r in enumerate(rows[:int(.3*len(rows))]):
+            agentsnew = assignToAgents(self.getCorrectedImgSegment()[r,:],agents,BarAgent,
+                                       self.getCorrectedImgSegment().shape[1],vert=r,fixAgents=finalStage)
+            agents = agentsnew
+            print('row',i)
+            if len(agents) > 1:
+                k = sortBarAgents(agents)
+            agents = agents[:20]
 
+        for i,a in enumerate(agents):
+            print('{0} {1}'.format(i,a))
+        return agents[:k]
+
+def sortBarAgents(agents):
+    agents.sort(key=lambda x: -x.score)
+    scores = nu.append(nu.array([x.score for x in agents if x.score > 1]),0)
+    hyp = 0
+    if len(scores) > 1:
+        hyp = nu.argmin(nu.diff(scores))
+        print(scores)
+        print('guessing:',hyp+1)
+    return hyp+1
 
 class ScoreImage(object):
     def __init__(self,fn):
@@ -436,11 +520,17 @@ class ScoreImage(object):
                 self.ap.paintHLine(j,alpha=0.9,step=4)
 
         for i,system in enumerate(self.getSystems()):
-            if i == 2:
+            if i == 0:
                 sys.stdout.write('drawing system {0}\n'.format(i))
                 sys.stdout.flush()
                 system.draw()
-                system.getBarLines()
+                ap1 = AgentPainter(system.getCorrectedImgSegment())
+                #system.getCorrectedImgSegment()
+                barAgents = system.getBarLines()
+                for a in barAgents:
+                    ap1.register(a)
+                    ap1.drawAgentGood(a,-500,500)
+                ap1.writeImage('tst.png')
         self.ap.writeImage(self.fn)
 
     def drawImageSelection(self,selection):
@@ -503,14 +593,25 @@ class ScoreImage(object):
             
 if __name__ == '__main__':
     fn = sys.argv[1]
-
     si = ScoreImage(fn)
-    #staffs = si.getStaffs()
-    #print(staffs)
     si.drawImage()
-    #si.drawImageSelection([5])
-    #self.getVSegments()
     sys.exit()
-    #agentfn = os.path.join('/tmp/',os.path.splitext(os.path.basename(fn))[0]+'.agents')
-    #with open(agentfn,'w') as f:
-    #    pickle.dump(agents,f)
+
+    simgfn = os.path.join('/tmp/',os.path.splitext(os.path.basename(fn))[0]+'.scrimg')
+    if os.access(simgfn,os.R_OK):
+        with open(simgfn,'r') as f:
+            si = pickle.load(f)
+    else:
+        si = ScoreImage(fn)
+        with open(simgfn,'w') as f:
+            pickle.dump(si,f)
+    staffs = si.getSystems()
+    print(staffs)
+
+"""
+evaluate bar agents:
+* how much overshoot above and below upper and lower stafflines resp?
+* interruptions within staffs?
+  * interruptions at end? -> probably curved staff, don't penalize
+* how much interruption?
+"""

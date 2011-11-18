@@ -186,23 +186,6 @@ class Agent(object):
         self.id = str(self.__hash__())
         self.offspring = 0
 
-    def clone(self):
-        clone = type(self)(nu.array((0,0)))
-        clone.age = self.age
-        clone.error = self.error
-        clone.points = self.points
-        clone.score = self.score
-        clone.mean = self.mean
-        clone.angleDev = self.angleDev
-        clone.offset = self.offset
-        clone.lineWidth = self.lineWidth[:]
-        if self.offspring == 0:
-            clone.id = self.id
-        else:
-            clone.id = '{0}_{1:02d}'.format(self.id,self.offspring)
-        self.offspring += 1
-        return clone
-
     def __str__(self):
         return 'Agent: {id}; angle: {angle:0.4f} ({ta:0.4f}+{ad:0.4f}); error: {err:0.3f} age: {age}; npts: {pts}; score: {score}; mean: {mean}'\
             .format(id=self.id,err=self.error,angle=self.getAngle(),ta=self.targetAngle,ad=self.angleDev,
@@ -212,28 +195,6 @@ class Agent(object):
         e0 = getError(other.points-self.mean,self.getAngle())
         e1 = getError(self.points-other.mean,other.getAngle())
         return (e0+e1)/2.0
-    
-    def getAngleCriticality(self):
-        return nu.abs(self.angleDev)/self.maxAngleDev
-    def getErrorCriticality(self):
-        return self.error/self.maxError
-        
-    def mergeableNew(self,other,track=False):
-        # UNUSED
-        assert self.targetAngle == other.targetAngle
-        points = nu.vstack((self.points,other.points))
-        mean = nu.mean(points,0)
-        tlsr = tls(points-mean)
-        angleDev = ((tlsr-self.targetAngle)+.5)%1-.5
-        error = getError(points-mean,angleDev+self.targetAngle)/points.shape[0]
-        #return error,angleDev,mean,lw,points
-        angleCriticality = nu.abs(angleDev)/self.maxAngleDev
-        errorCriticality = error/float(self.maxError)
-        return 0 if angleCriticality < 1 and \
-            angleCriticality < (self.getAngleCriticality() + other.getAngleCriticality())/2.0 and\
-            errorCriticality < 1 and \
-            errorCriticality < (self.getErrorCriticality() + other.getErrorCriticality())/2.0 else self.maxError+1
-    
     
     def getLineWidth(self):
         return self.lw
@@ -346,7 +307,7 @@ class Agent(object):
             #print(self)
             #print('lw',lw,self.getLineWidth(),self.getLineWidthStd())
             #print('prepare point add',xy0,xy1)
-            if nu.sign(error0) != nu.sign(error1):
+            if False: #nu.sign(error0) != nu.sign(error1):
                 xy = self.getIntersection(xy0,xy1)
             else:
                 if lw <= self.getLineWidth() + max(1,self.getLineWidthStd()):
@@ -364,30 +325,6 @@ class Agent(object):
         angleDev = ((tlsr-self.targetAngle)+.5)%1-.5
         error = getError(points-mean,angleDev+self.targetAngle)/points.shape[0]
         return error,angleDev,mean,lw,points
-
-    def bidOld(self,xy0,xy1=None):
-        #TODO:
-        """give as bid value: error of new point w.r.t. median error of agent
-
-        """
-        error,angleDev,mean,lw,points = self.preparePointAdd(xy0,xy1=xy1)
-        assert self.maxAngleDev > 0
-        assert self.maxError > 0
-        angleCriticality = nu.abs(angleDev)/self.maxAngleDev
-        errorCriticality = error/self.maxError
-        print('BID')
-        print(self)
-        print(xy0,xy1)
-        ainc = (nu.abs(angleDev)-nu.abs(self.angleDev))/self.maxAngleDev
-        einc = (error-self.error)/self.maxError
-        print('angle inc',ainc)
-        print('error inc',einc)
-        allowedIncrease = .2 # proportion
-        if False: #ainc > allowedIncrease:
-            return 2
-        if einc > allowedIncrease:
-            return 2
-        return max(angleCriticality,errorCriticality)
 
     def bid(self,xy0,xy1=None):
         # distance of xy0 to the current line (defined by self.angle)
