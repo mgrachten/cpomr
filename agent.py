@@ -53,67 +53,41 @@ class AgentPainter(object):
             c1 = nu.minimum(255,c+50)
             c2 = nu.maximum(0,c-100)
             M,N = self.img.shape[1:]
-            for r in range(rmin,rmax):
-                x = r*nu.sin(agent.getAngle()*nu.pi)+agent.getDrawMean()[0]
-                y = r*nu.cos(agent.getAngle()*nu.pi)+agent.getDrawMean()[1]
-                #print(r,agent.getAngle(),agent.getDrawMean(),x,y)
-                #print(x,y)
-                if 0 <= x < M and 0 <= y < N:
-                    alpha = min(.8,max(.1,.5+float(agent.score)/max(1,agent.age)))
-                    self.paint(nu.array((x,y)),c2,alpha)
+            rng = nu.arange(rmin,rmax)
+            xy = nu.column_stack((rng*nu.sin(agent.getAngle()*nu.pi)+agent.getDrawMean()[0],
+                                  rng*nu.cos(agent.getAngle()*nu.pi)+agent.getDrawMean()[1]))
+            idx = nu.logical_and(nu.logical_and(xy[:,0]>=0,xy[:,0]<M),
+                                 nu.logical_and(xy[:,1]>=0,xy[:,1]<N))
+            alpha = min(.8,max(.1,.5+float(agent.score)/max(1,agent.age)))
+            xy = xy[idx,:]
+            print(xy)
+            self.paintRav(xy,c2)
+            #for r in range(rmin,rmax):
+            #    x = r*nu.sin(agent.getAngle()*nu.pi)+agent.getDrawMean()[0]
+            #    y = r*nu.cos(agent.getAngle()*nu.pi)+agent.getDrawMean()[1]
+            #    #print(r,agent.getAngle(),agent.getDrawMean(),x,y)
+            #    #print(x,y)
+            #    if 0 <= x < M and 0 <= y < N:
+            #        self.paint(nu.array((x,y)),c2,alpha)
 
             self.paintRect(agent.getDrawPoints()[0][0],agent.getDrawPoints()[0][0],
                            agent.getDrawPoints()[0][1],agent.getDrawPoints()[0][1],c)
             self.paintRect(agent.getDrawMean()[0]+2,agent.getDrawMean()[0]-2,
                            agent.getDrawMean()[1]+2,agent.getDrawMean()[1]-2,c)
-            for p in agent.getDrawPoints():
-                self.paint(p,c1)
 
+            self.paintRav(agent.getDrawPoints(),c1)
+            #for p in agent.getDrawPoints():
+            #    self.paint(p,c1)
 
-    def drawAgent(self,agent):
-        if self.agents.has_key(agent):
-            c = self.colors[self.agents[agent]]
-            c1 = nu.minimum(255,c+50)
-            c2 = nu.maximum(0,c-100)
-            #self.paintStart(agent.point,c)
-            #print(agent.getTrajectory())
-            #if agent.points.shape[0] > 1:
-            #    for p in agent.getTrajectory():
-            #        self.paint(p,c,.3)
-            #a.getDrawMean()-nu.arange(0,self.img.shape[1])
-            M,N = self.img.shape[1:]
-            xbegin = agent.getDrawMean()[0]+(-agent.getDrawMean()[1])*nu.tan(((agent.angle-agent.targetAngle+.5)%1-.5)*nu.pi)
-            xend = agent.getDrawMean()[0]+(N-agent.getDrawMean()[1])*nu.tan(((agent.angle-agent.targetAngle+.5)%1-.5)*nu.pi)
-            if xbegin < 0 or xend >= M:
-                print('undrawable agent',agent.getDrawMean(),xbegin,xend,M,agent.angle)
-                return False
-            dx = nu.abs(xend-xbegin)
-            dy = N
-            delta = max(dx,dy)+2
-            z = nu.round(nu.column_stack((nu.linspace(xbegin,xend,delta),
-                                          nu.linspace(0,N-1,delta)))).astype(nu.int)
-            for p in z:
-                try:
-                    alpha = min(.8,max(.1,.5+float(agent.score)/agent.age))
-                    self.paint(p,c2,alpha)
-                except IndexError:
-                    print(p,img.shape[1:])
-                    
-            #print(img.shape)
-            #print('draw',agent.angle,agent.getDrawMean())
-            #print(z)
-            #print(agent.getDrawPoints())
-            self.paintRect(agent.getDrawPoints()[0][0],agent.getDrawPoints()[0][0],
-                           agent.getDrawPoints()[0][1],agent.getDrawPoints()[0][1],c)
-            for p in agent.getDrawPoints():
-                #for p in pp:
-                self.paint(p,c1)
-                if p[0]-1 >= 0:
-                    self.paint((p[0]-1,p[1]),c1)
-                if p[0]+1 < self.img.shape[0]:
-                    self.paint((p[0]+1,p[1]),c1)
-        else:
-            sys.stderr.write('Warning, unknown agent\n')
+    def paintRav(self,coords,color,alpha=1):
+        idx = (self.img.shape[2]*nu.round(coords[:,0])+nu.round(coords[:,1])).astype(nu.int64)
+        print(idx)
+        print(color)
+        print(alpha)
+        self.img[0,:,:].flat[idx] = (1-alpha)*self.img[0,:,:].flat[idx]+alpha*color[0]
+        self.img[1,:,:].flat[idx] = (1-alpha)*self.img[1,:,:].flat[idx]+alpha*color[1]
+        self.img[2,:,:].flat[idx] = (1-alpha)*self.img[2,:,:].flat[idx]+alpha*color[2]
+        #self.img[:,int(coord[0]),int(coord[1])] = (1-alpha)*self.img[:,int(coord[0]),int(coord[1])]+alpha*color
 
     def paint(self,coord,color,alpha=1):
         #print('point',coord,img.shape)

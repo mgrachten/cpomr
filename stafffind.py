@@ -388,8 +388,14 @@ class System(object):
         top = nu.array((self.getTop(),int(self.scrImage.getWidth()/2.)))
         return nu.array((top[0]-top[1]*nu.tan(nu.pi*self.getStaffAngle()),0))
 
-    def backTransform(self,x,y):
-        self.Ql = nu.array()
+    def backTransform(self,d):
+        print('Qg,Ql')
+        print(self.Qg)
+        print(self.Ql)
+        dl = (d-self.Ql).reshape((-1,2))
+        r = nu.sum(dl**2,1)**.5
+        ph = nu.arctan2(dl[:,0],dl[:,1])-self.getStaffAngle()*nu.pi
+        return (nu.column_stack((r*nu.sin(ph),r*nu.cos(ph)))+self.Qg).reshape(d.shape)
         
     @getter
     def getCorrectedImgSegment(self):
@@ -413,7 +419,7 @@ class System(object):
         # the point in the middle of the lower border of the system 
         # in the coordinate system of the corrected image segment (local)
         # TODO get horizontal coordinate of Ql
-        self.Ql = nu.array((sysHeight,0.0))
+        self.Ql = nu.array((sysHeight,.5*self.scrImage.getWidth()/nu.cos(nu.pi*self.getStaffAngle())-w1))
         
         for i,r in enumerate(row):
             rc = r+col
@@ -479,6 +485,9 @@ class System(object):
             agents = agents[:20]
 
         for i,a in enumerate(agents):
+            a.points = self.backTransform(a.points)
+            a.mean = self.backTransform(a.mean)
+            a.targetAngle -= self.getStaffAngle()
             print('{0} {1}'.format(i,a))
         return agents[:k]
 
@@ -565,10 +574,17 @@ class ScoreImage(object):
                 sys.stdout.flush()
                 system.draw()
                 sysSegs.append(system.getCorrectedImgSegment())
+                #x = nu.array([[50,50],[100,30],[0,0]])
+                #xr = system.backTransform(x)
+                #print(xr)
+                #nu.savetxt('/tmp/x.txt',x)
+                #nu.savetxt('/tmp/xr.txt',xr)
                 #barAgents = system.getBarLines()
                 #for a in barAgents:
-                #    ap1.register(a)
-                #    ap1.drawAgentGood(a,-500,500)
+                #    self.ap.register(a)
+                #    self.ap.drawAgentGood(a,-500,500)
+        self.ap.writeImage(self.fn)
+        return True
         shapes = nu.array([ss.shape for ss in sysSegs])
         ssH = nu.sum(shapes[:,0])
         ssW = nu.max(shapes[:,1])
@@ -579,9 +595,8 @@ class ScoreImage(object):
             horzOffset = 0#int(nu.floor((ssW-w)/2.))
             ssImg[x0:x0+h,horzOffset:horzOffset+w] = ss
             x0 += h
-        ap1 = AgentPainter(ssImg)
-        ap1.writeImage(self.fn.replace('.png','-corr.png'))
-        self.ap.writeImage(self.fn)
+        #ap1 = AgentPainter(ssImg)
+        #ap1.writeImage(self.fn.replace('.png','-corr.png'))
 
     def drawImageSelection(self,selection):
         # draw segment boundaries
