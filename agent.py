@@ -60,7 +60,6 @@ class AgentPainter(object):
                                  nu.logical_and(xy[:,1]>=0,xy[:,1]<N))
             alpha = min(.8,max(.1,.5+float(agent.score)/max(1,agent.age)))
             xy = xy[idx,:]
-            print(xy)
             self.paintRav(xy,c2)
             #for r in range(rmin,rmax):
             #    x = r*nu.sin(agent.getAngle()*nu.pi)+agent.getDrawMean()[0]
@@ -81,9 +80,10 @@ class AgentPainter(object):
 
     def paintRav(self,coords,color,alpha=1):
         idx = (self.img.shape[2]*nu.round(coords[:,0])+nu.round(coords[:,1])).astype(nu.int64)
-        print(idx)
-        print(color)
-        print(alpha)
+        print('img',self.img.shape)
+        print('min',nu.min(coords,0))
+        print('max',nu.max(coords,0))
+        #print(idx)
         self.img[0,:,:].flat[idx] = (1-alpha)*self.img[0,:,:].flat[idx]+alpha*color[0]
         self.img[1,:,:].flat[idx] = (1-alpha)*self.img[1,:,:].flat[idx]+alpha*color[1]
         self.img[2,:,:].flat[idx] = (1-alpha)*self.img[2,:,:].flat[idx]+alpha*color[2]
