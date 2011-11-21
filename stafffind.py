@@ -310,7 +310,7 @@ class Staff(object):
             self.scrImage.ap.drawAgentGood(agent,-self.scrImage.getWidth(),self.scrImage.getWidth())
 
     def getAngle(self):
-        print('staff angles',[(a.getAngle()+.5)%1-.5 for a in self.staffLineAgents])
+        #print('staff angles',[(a.getAngle()+.5)%1-.5 for a in self.staffLineAgents])
         return nu.mean([(a.getAngle()+.5)%1-.5 for a in self.staffLineAgents])
 
     @getter
@@ -335,12 +335,15 @@ class System(object):
     def __init__(self,scoreImage,staffs):
         self.scrImage = scoreImage
         self.staffs = staffs
-        
+        self.barPoints = []
     def getTop(self):
         return self.staffs[0].top
     def getBottom(self):
         return self.staffs[1].bottom
-        
+
+    def addBarPoint(self,xy):
+        self.barPoints.append(xy)
+
     def getLowerLeft(self):
         #meanLower = self.staffs[1].staffLineAgents[-1].getDrawMean()
         #return nu.array((meanLower[0]-meanLower[1]*nu.tan(nu.pi*self.getStaffAngle()),0))
@@ -366,8 +369,6 @@ class System(object):
         botLeft = bot[0]+dyl*nu.tan(nu.pi*self.getStaffAngle())
         botRight = bot[0]+dyr*nu.tan(nu.pi*self.getStaffAngle())
         correction = min(0,nu.floor(self.scrImage.getHeight()-max(botLeft,botRight)-1))
-        print(self.scrImage.getHeight(),botLeft,botRight,correction,self.getStaffAngle())
-        print(self.getBottom(),botLeft+correction-1,botRight+correction)
         return nu.array((botLeft+correction,0)),nu.array((botRight+correction,self.scrImage.getWidth()))
  
     @getter
@@ -394,13 +395,11 @@ class System(object):
         print(self.Ql)
         dl = (d-self.Ql).reshape((-1,2))
         r = nu.sum(dl**2,1)**.5
-        ph = nu.arctan2(dl[:,0],dl[:,1])-self.getStaffAngle()*nu.pi
+        ph = nu.arctan2(dl[:,0],dl[:,1])+self.getStaffAngle()*nu.pi
         return (nu.column_stack((r*nu.sin(ph),r*nu.cos(ph)))+self.Qg).reshape(d.shape)
         
     @getter
     def getCorrectedImgSegment(self):
-        #systemTop = self.staffs[0].getTopBottom()[0]
-        #systemBot = self.staffs[1].getTopBottom()[1]
         sysHeight = (self.getLowerLeft()-self.getUpperLeft())[0]
         w1 = sysHeight*nu.tan(nu.pi*self.getStaffAngle())
         w2 = self.scrImage.getWidth()/nu.cos(nu.pi*self.getStaffAngle())
@@ -420,7 +419,6 @@ class System(object):
         # in the coordinate system of the corrected image segment (local)
         # TODO get horizontal coordinate of Ql
         self.Ql = nu.array((sysHeight,.5*self.scrImage.getWidth()/nu.cos(nu.pi*self.getStaffAngle())-w1))
-        
         for i,r in enumerate(row):
             rc = r+col
             xf = nu.floor(rc[:,0]).astype(nu.int)
@@ -449,9 +447,6 @@ class System(object):
 
     def getStaffAngle(self):
         return nu.mean([s.getAngle() for s in self.staffs])
-
-    #def getVSums(self):
-    #    self.scrImage.getVSums()[self.staffs[0].top]
 
     @getter
     def getHSums(self):
@@ -490,6 +485,29 @@ class System(object):
             a.targetAngle -= self.getStaffAngle()
             print('{0} {1}'.format(i,a))
         return agents[:k]
+
+    def getcorrectedImgSegmentNew(self):
+        # find the dimesions of the tilted box inside the system's upper and lower
+        # border
+        Qg = 0
+        Ql = 0
+
+        r = Rotator(self.getStaffAngle(),Qg,Ql)
+
+class Rotator(object):
+    def __init__(self,theta,og,ol):
+        self.og = og
+        self.ol = ol
+        self.theta = theta
+    def rotate(self,xx,yy):
+        xxr = nu.cos(self.theta*nu.pi)*(xx-self.ol[0])-nu.sin(self.theta*nu.pi)*(yy-self.ol[1])
+        yyr = nu.sin(self.theta*nu.pi)*(xx-self.ol[0])+nu.cos(self.theta*nu.pi)*(yy-self.ol[1])
+        return xxr+self.og[0],yyr+self.og[1]
+    def derotate(self,xxr,yyr):
+        xx = nu.cos(-self.theta*nu.pi)*(xxr-self.og[0])-nu.sin(-self.theta*nu.pi)*(yyr-self.og[1])
+        yy = nu.sin(-self.theta*nu.pi)*(xxr-self.og[0])+nu.cos(-self.theta*nu.pi)*(yyr-self.og[1])
+        return xx+self.ol[0],yy+self.ol[1]
+
 
 def sortBarAgents(agents):
     agents.sort(key=lambda x: -x.score)
@@ -573,9 +591,17 @@ class ScoreImage(object):
                 sys.stdout.write('drawing system {0}\n'.format(i))
                 sys.stdout.flush()
                 system.draw()
-                sysSegs.append(system.getCorrectedImgSegment())
+                #sysSegs.append(system.getCorrectedImgSegment())
                 #x = nu.array([[50,50],[100,30],[0,0]])
-                #xr = system.backTransform(x)
+                #sH,sW = system.getCorrectedImgSegment().shape
+                #x1 = system.backTransform(nu.column_stack((nu.arange(sH),nu.zeros(sH))))
+                #x2 = system.backTransform(nu.column_stack((nu.arange(sH),sW-1+nu.zeros(sH))))
+                #x3 = system.backTransform(nu.column_stack((nu.zeros(sW),nu.arange(sW))))
+                #x4 = system.backTransform(nu.column_stack((nu.zeros(sW)+sH-1,nu.arange(sW))))
+                #self.ap.paintRav(x1,nu.array([255,0,0]))
+                #self.ap.paintRav(x2,nu.array([255,0,0]))
+                #self.ap.paintRav(x3,nu.array([255,0,0]))
+                #self.ap.paintRav(x4,nu.array([255,0,0]))
                 #print(xr)
                 #nu.savetxt('/tmp/x.txt',x)
                 #nu.savetxt('/tmp/xr.txt',xr)
@@ -655,11 +681,72 @@ class ScoreImage(object):
 
         amax = angles[nu.argmax(globalAngleHist)]
         return distributions.norm(amax,.5/180.0).pdf(angles)
-            
+
+
+def getNumberedBarCoords(barpoints,scrImage):
+    systems = si.getSystems()
+    assignBarlinesToSystems(systems,barpoints)
+    bar = 0
+    bars = {}
+    for system in systems:
+        if system.barPoints.shape[0] == 0:
+            tl = (system.staffs[0].staffLineAgents[0].getDrawMean()[0],0)
+            br = (system.staffs[1].staffLineAgents[-1].getDrawMean()[0],scrImage.getWidth()-1)
+            bars[bar] = bars.get(bar,[])+[tl,br]
+        elif system.barPoints.shape[0] == 1:
+            tl = (system.staffs[0].staffLineAgents[0].getDrawMean()[0],system.barPoints[0,0])
+            br = (system.staffs[1].staffLineAgents[-1].getDrawMean()[0],scrImage.getWidth()-1)
+            bars[bar] = bars.get(bar,[])+[tl,br]
+        else:
+            for i in range(1,system.barPoints.shape[0]):
+                tl = (system.staffs[0].staffLineAgents[0].getDrawMean()[0],system.barPoints[i-1,0])
+                br = (system.staffs[1].staffLineAgents[-1].getDrawMean()[0],system.barPoints[i,0])
+                bars[bar] = bars.get(bar,[])+[tl,br]
+                bar += 1
+    bs = bars.keys()
+    bs.sort()
+    fn = os.path.join('/tmp',os.path.splitext(os.path.basename(scrImage.fn))[0]+'.txt')
+
+    imgnr = None
+    barnr = None
+    imgbarfile = '/tmp/imgbar.txt'
+
+    d = nu.loadtxt(imgbarfile)
+    imgnr = int(d[0])
+    barnr = int(d[1])
+
+    assert imgnr != None
+    assert barnr != None
+    with open(fn,'w') as f:
+        for b in bs:
+            f.write('{0} {1} '.format(imgnr,b+barnr))
+            for xy in bars[b]:
+                for p in xy:
+                    f.write('{0:d} '.format(int(nu.round(p))))
+            f.write('\n')
+    nu.savetxt(imgbarfile,nu.array([imgnr+1,barnr+len(bs)]))
+
+def assignBarlinesToSystems(systems,barpoints):
+    for xy in barpoints:
+        assigned = False
+        for system in systems:
+            if system.getUpperLeft()[0] < xy[1] < system.getLowerLeft()[0]:
+                system.addBarPoint(xy)
+                assigned = True
+                break
+        if not assigned:
+            print('warning, could not assign point',xy)
+    for system in systems:
+        system.barPoints = nu.array(system.barPoints).reshape((-1,2))
+
 if __name__ == '__main__':
     fn = sys.argv[1]
+    barfile = sys.argv[2]
     si = ScoreImage(fn)
-    si.drawImage()
+    #si.drawImage()
+    # barpoints in format: horz vert
+    barpoints = nu.loadtxt(barfile)
+    getNumberedBarCoords(barpoints,si)
     sys.exit()
 
     simgfn = os.path.join('/tmp/',os.path.splitext(os.path.basename(fn))[0]+'.scrimg')
