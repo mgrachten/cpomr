@@ -444,7 +444,17 @@ class System(object):
     def draw(self):
         for staff in self.staffs:
             staff.draw()
+        self.drawBarPoints()
 
+    def drawBarPoints(self):
+        lower = int(self.getLowerLeft()[0])
+        upper = int(self.getUpperLeft()[0])
+        r = lower-upper
+        c = nu.array((255,0,0))
+        for p in self.barPoints:
+            self.scrImage.ap.paintRav(nu.column_stack((nu.arange(upper,lower),(nu.zeros(r)+p[0]).astype(nu.int))),
+                                      c)
+        
     def getStaffAngle(self):
         return nu.mean([s.getAngle() for s in self.staffs])
 
@@ -489,10 +499,17 @@ class System(object):
     def getcorrectedImgSegmentNew(self):
         # find the dimesions of the tilted box inside the system's upper and lower
         # border
-        Qg = 0
-        Ql = 0
-
-        r = Rotator(self.getStaffAngle(),Qg,Ql)
+        #Qg = 
+        #Ql = 0
+        #Hn = 
+        systemHeight = self.getLowerLeft()[0]-self.getUpperLeft()[0]
+        # this gets cut off from the width, to fit in the page rotated
+        cutOff = sysHeight*nu.tan(nu.pi*self.getStaffAngle())
+        systemWidth = self.scrImage.getWidth()/nu.cos(nu.pi*self.getStaffAngle()) - cutOff
+        Ql = nu.array((systemHeight,systemWidth/2.0))
+        r = Rotator(self.getStaffAngle(),self.Qg,Ql)
+        
+        
 
 class Rotator(object):
     def __init__(self,theta,og,ol):
@@ -692,16 +709,19 @@ def getNumberedBarCoords(barpoints,scrImage):
         if system.barPoints.shape[0] == 0:
             tl = (system.staffs[0].staffLineAgents[0].getDrawMean()[0],0)
             br = (system.staffs[1].staffLineAgents[-1].getDrawMean()[0],scrImage.getWidth()-1)
-            bars[bar] = bars.get(bar,[])+[tl,br]
+            wh = (br[0]-tl[0],br[1]-tl[1])
+            bars[bar] = bars.get(bar,[])+[reversed(tl),reversed(wh)]
         elif system.barPoints.shape[0] == 1:
             tl = (system.staffs[0].staffLineAgents[0].getDrawMean()[0],system.barPoints[0,0])
             br = (system.staffs[1].staffLineAgents[-1].getDrawMean()[0],scrImage.getWidth()-1)
-            bars[bar] = bars.get(bar,[])+[tl,br]
+            wh = (br[0]-tl[0],br[1]-tl[1])
+            bars[bar] = bars.get(bar,[])+[reversed(tl),reversed(wh)]
         else:
             for i in range(1,system.barPoints.shape[0]):
                 tl = (system.staffs[0].staffLineAgents[0].getDrawMean()[0],system.barPoints[i-1,0])
                 br = (system.staffs[1].staffLineAgents[-1].getDrawMean()[0],system.barPoints[i,0])
-                bars[bar] = bars.get(bar,[])+[tl,br]
+                wh = (br[0]-tl[0],br[1]-tl[1])
+                bars[bar] = bars.get(bar,[])+[reversed(tl),reversed(wh)]
                 bar += 1
     bs = bars.keys()
     bs.sort()
@@ -719,7 +739,7 @@ def getNumberedBarCoords(barpoints,scrImage):
     assert barnr != None
     with open(fn,'w') as f:
         for b in bs:
-            f.write('{0} {1} '.format(imgnr,b+barnr))
+            f.write('{0} {1} '.format(b+barnr,imgnr))
             for xy in bars[b]:
                 for p in xy:
                     f.write('{0:d} '.format(int(nu.round(p))))
@@ -747,6 +767,7 @@ if __name__ == '__main__':
     # barpoints in format: horz vert
     barpoints = nu.loadtxt(barfile)
     getNumberedBarCoords(barpoints,si)
+    si.drawImage()
     sys.exit()
 
     simgfn = os.path.join('/tmp/',os.path.splitext(os.path.basename(fn))[0]+'.scrimg')
