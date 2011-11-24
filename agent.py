@@ -56,13 +56,14 @@ class AgentPainter(object):
             c2 = nu.maximum(0,c-100)
             M,N = self.img.shape[1:]
             rng = nu.arange(rmin,rmax)
-            xy = nu.column_stack((rng*nu.sin(agent.getAngle()*nu.pi)+agent.getDrawMean()[0],
-                                  rng*nu.cos(agent.getAngle()*nu.pi)+agent.getDrawMean()[1]))
+            xy = nu.round(nu.column_stack((rng*nu.sin(agent.getAngle()*nu.pi)+agent.getDrawMean()[0],
+                                           rng*nu.cos(agent.getAngle()*nu.pi)+agent.getDrawMean()[1])))
             idx = nu.logical_and(nu.logical_and(xy[:,0]>=0,xy[:,0]<M),
                                  nu.logical_and(xy[:,1]>=0,xy[:,1]<N))
             alpha = min(.8,max(.1,.5+float(agent.score)/max(1,agent.age)))
             xy = xy[idx,:]
-            self.paintRav(xy,c2)
+            if xy.shape[0] > 0:
+                self.paintRav(xy,c2)
             #for r in range(rmin,rmax):
             #    x = r*nu.sin(agent.getAngle()*nu.pi)+agent.getDrawMean()[0]
             #    y = r*nu.cos(agent.getAngle()*nu.pi)+agent.getDrawMean()[1]
@@ -227,8 +228,8 @@ class Agent(object):
         errorOK = self.error <= self.maxError
         successRateOK = self.score >= self.minScore
         r = not all((angleOK,errorOK,successRateOK))
-        #if r:
-        #    print('Died: {0}; angleOK: {1}; errorOK: {2}, scoreOK: {3}'.format(self,angleOK,errorOK,successRateOK))
+        if r:
+            print('Died: {0}; angleOK: {1}; errorOK: {2}, scoreOK: {3}'.format(self,angleOK,errorOK,successRateOK))
         return r
   
     def getIntersection(self,xy0,xy1):

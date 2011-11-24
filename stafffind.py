@@ -18,8 +18,8 @@ def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False):
         candidates = [tuple(data)]
     else:
         return agents
-    #print('candidates',candidates)
     if vert is not None:
+        #print('candidates',candidates)
         candidates = [[nu.array([vert,horz]) for horz in horzz] for horzz in candidates]
     elif horz is not None:
         candidates = [[nu.array([vert,horz]) for vert in vertz] for vertz in candidates]
@@ -57,7 +57,9 @@ def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False):
                 newagent = AgentType(nu.mean(nu.array(candidates[i]),0))
                 newagents.append(newagent)
     
-    return [a for a in newagents if a.tick(fixAgents)]
+    #return [a for a in newagents if a.tick(fixAgents)]
+    r = partition(lambda x: x.tick(fixAgents),newagents)
+    return r.get(True,[]),r.get(False,[])
 
 def selectColumns(vsums,bins):
     N = len(vsums)
@@ -210,8 +212,8 @@ class VerticalSegment(object):
         for i,c in enumerate(cols):
             if nFinalRuns == 0:
                 break
-            agentsnew = assignToAgents(self.getImgSegment()[:,c],agents,StaffAgent,
-                                       self.scrImage.getWidth(),horz=c,fixAgents=finalStage)
+            agentsnew,died = assignToAgents(self.getImgSegment()[:,c],agents,StaffAgent,
+                                            self.scrImage.getWidth(),horz=c,fixAgents=finalStage)
             if len(agentsnew) > 1:
                 agentsnew = mergeAgents(agentsnew)
             
@@ -436,17 +438,20 @@ class System(object):
         ap = AgentPainter(self.getCorrectedImgSegment())
         draw = True
         for i,r in enumerate(rows[:int(.3*len(rows))]):
-            agentsnew = assignToAgents(self.getCorrectedImgSegment()[r,:],agents,BarAgent,
-                                       self.getCorrectedImgSegment().shape[1],vert=r,fixAgents=finalStage)
+            agentsnew,died = assignToAgents(self.getCorrectedImgSegment()[r,:],agents,BarAgent,
+                                            self.getCorrectedImgSegment().shape[1],vert=r,fixAgents=finalStage)
             agents = agentsnew
             print('row',i)
             if len(agents) > 1:
                 k = sortBarAgents(agents)
-            agents = agents[:20]
+            #agents = agents[:20]
             if draw:
                 ap.reset()
                 ap.paintHLine(r)
+                for a in died:
+                    ap.unregister(a)
                 for a in agents:
+                    print(a)
                     ap.register(a)
                     ap.drawAgentGood(a,-300,300)
                 f0,ext = os.path.splitext(fn)
