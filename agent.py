@@ -27,6 +27,8 @@ class AgentPainter(object):
         return self.agents.has_key(agent)
         
     def register(self,agent):
+        if self.isRegistered(agent):
+            return True
         available = nu.where(self.paintSlots==0)[0]
         if len(available) < 1:
             print('no paint slots available')
@@ -71,8 +73,8 @@ class AgentPainter(object):
 
             self.paintRect(agent.getDrawPoints()[0][0],agent.getDrawPoints()[0][0],
                            agent.getDrawPoints()[0][1],agent.getDrawPoints()[0][1],c)
-            self.paintRect(agent.getDrawMean()[0]+2,agent.getDrawMean()[0]-2,
-                           agent.getDrawMean()[1]+2,agent.getDrawMean()[1]-2,c)
+            #self.paintRect(agent.getDrawMean()[0]+2,agent.getDrawMean()[0]-2,
+            #               agent.getDrawMean()[1]+2,agent.getDrawMean()[1]-2,c)
 
             self.paintRav(agent.getDrawPoints(),c1)
             #for p in agent.getDrawPoints():

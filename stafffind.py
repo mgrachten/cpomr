@@ -336,6 +336,11 @@ class System(object):
         self.scrImage = scoreImage
         self.staffs = staffs
         self.barPoints = []
+        # self.Qg, the point in the middle of the lower border of the system 
+        # in the coordinate system of the original picture (global)
+        # this is the point around which the rotation is done
+        #self.Qg = nu.array((self.getBottom()-1,int(self.scrImage.getWidth()/2.)))
+        
     def getTop(self):
         return self.staffs[0].top
     def getBottom(self):
@@ -345,101 +350,45 @@ class System(object):
         self.barPoints.append(xy)
 
     def getLowerLeft(self):
-        #meanLower = self.staffs[1].staffLineAgents[-1].getDrawMean()
-        #return nu.array((meanLower[0]-meanLower[1]*nu.tan(nu.pi*self.getStaffAngle()),0))
-        return self.getLowerLeftRight()[0]
+        return self.getSystemPoints()[2]
 
     def getUpperLeft(self):
-        #meanLower = self.staffs[1].staffLineAgents[-1].getDrawMean()
-        #return nu.array((meanLower[0]-meanLower[1]*nu.tan(nu.pi*self.getStaffAngle()),0))
-        return self.getUpperLeftRight()[0]
+        return self.getSystemPoints()[0]
+
+    def getLowerMid(self):
+        return self.getSystemPoints()[4]
+
+    def getLowerMidLocal(self):
+        return nu.array((self.getSystemHeight()-1,int((self.getSystemWidth()-1)/2)))
 
     @getter
-    def getLowerLeftRight(self):
-        #meanLower = self.staffs[1].staffLineAgents[-1].getDrawMean()
-        #return nu.array((meanLower[0]-meanLower[1]*nu.tan(nu.pi*self.getStaffAngle()),0))
+    def getSystemPoints(self):
+        # returns topleft, topright, botleft, botright, and lower hmid
+        # of tilted rectangle, such that all above coordinates fall inside the img
+        hMid = int(self.scrImage.getWidth()/2.)
+        top = self.staffs[0].top
+        bot = self.staffs[1].bottom
 
-        # self.Qg, the point in the middle of the lower border of the system 
-        # in the coordinate system of the original picture (global)
-        # this is the point around which the rotation is done
-        self.Qg = nu.array((self.getBottom(),int(self.scrImage.getWidth()/2.)))
-        bot = self.Qg
-        dyl = -bot[1]
-        dyr = self.scrImage.getWidth()-bot[1]
-        botLeft = bot[0]+dyl*nu.tan(nu.pi*self.getStaffAngle())
-        botRight = bot[0]+dyr*nu.tan(nu.pi*self.getStaffAngle())
-        correction = min(0,nu.floor(self.scrImage.getHeight()-max(botLeft,botRight)-1))
-        return nu.array((botLeft+correction,0)),nu.array((botRight+correction,self.scrImage.getWidth()))
- 
-    @getter
-    def getUpperLeftRight(self):
-        top = nu.array((self.getTop(),int(self.scrImage.getWidth()/2.)))
-        dyl = -top[1]
-        dyr = self.scrImage.getWidth()-top[1]
-        topLeft = top[0]+dyl*nu.tan(nu.pi*self.getStaffAngle())
-        topRight = top[0]+dyr*nu.tan(nu.pi*self.getStaffAngle())
-        correction = min(0,nu.floor(min(topLeft,topRight))-1)
-        #min(0,self.scrImage.getHeight()-max(botLeft,botRight))
-        return nu.array((topLeft-correction,0)),nu.array((topRight-correction,self.scrImage.getWidth()))
+        dyl = -hMid
+        dyr = self.scrImage.getWidth()-hMid
 
-    @getter
-    def getUpperLeftOld(self):
-        #meanLower = self.staffs[0].staffLineAgents[0].getDrawMean()
-        #return nu.array((meanLower[0]-meanLower[1]*nu.tan(nu.pi*self.getStaffAngle()),0))
-        top = nu.array((self.getTop(),int(self.scrImage.getWidth()/2.)))
-        return nu.array((top[0]-top[1]*nu.tan(nu.pi*self.getStaffAngle()),0))
+        botLeft = bot+dyl*nu.tan(nu.pi*self.getStaffAngle())
+        botRight = bot+dyr*nu.tan(nu.pi*self.getStaffAngle())
+        topLeft = top+dyl*nu.tan(nu.pi*self.getStaffAngle())
+        topRight = top+dyr*nu.tan(nu.pi*self.getStaffAngle())
 
-    def backTransform(self,d):
-        print('Qg,Ql')
-        print(self.Qg)
-        print(self.Ql)
-        dl = (d-self.Ql).reshape((-1,2))
-        r = nu.sum(dl**2,1)**.5
-        ph = nu.arctan2(dl[:,0],dl[:,1])+self.getStaffAngle()*nu.pi
-        return (nu.column_stack((r*nu.sin(ph),r*nu.cos(ph)))+self.Qg).reshape(d.shape)
-        
-    @getter
-    def getCorrectedImgSegment(self):
-        sysHeight = (self.getLowerLeft()-self.getUpperLeft())[0]
-        w1 = sysHeight*nu.tan(nu.pi*self.getStaffAngle())
-        w2 = self.scrImage.getWidth()/nu.cos(nu.pi*self.getStaffAngle())
-        if w1 < 0:
-            # start late
-            rng = nu.arange(int(nu.ceil(-w1)),int(nu.floor(w2)))
-        else:
-            # stop early
-            rng = nu.arange(0,int(nu.floor(w2-w1)))
-        hrng = nu.arange(sysHeight)
-        col = nu.column_stack((-hrng*nu.cos(nu.pi*self.getStaffAngle()),
-                                hrng*nu.sin(nu.pi*self.getStaffAngle())))
-        row = nu.column_stack((rng*nu.sin(nu.pi*self.getStaffAngle()),
-                               rng*nu.cos(nu.pi*self.getStaffAngle())))+self.getLowerLeft()
-        z = nu.zeros((col.shape[0],row.shape[0]),nu.uint8)
-        # the point in the middle of the lower border of the system 
-        # in the coordinate system of the corrected image segment (local)
-        # TODO get horizontal coordinate of Ql
-        self.Ql = nu.array((sysHeight,.5*self.scrImage.getWidth()/nu.cos(nu.pi*self.getStaffAngle())-w1))
-        for i,r in enumerate(row):
-            rc = r+col
-            xf = nu.floor(rc[:,0]).astype(nu.int)
-            xc = nu.ceil(rc[:,0]).astype(nu.int)
-            yf = nu.floor(rc[:,1]).astype(nu.int)
-            yc = nu.ceil(rc[:,1]).astype(nu.int)
-            wxc = rc[:,0]%1
-            wxf = 1-wxc
-            wyc = rc[:,1]%1
-            wyf = 1-wyc
-            
-            z[::-1,i] = \
-                (((wxf+wyf)*self.scrImage.getImg().flat[self.scrImage.getWidth()*xf+yf] + \
-                (wxf+wyc)*self.scrImage.getImg().flat[self.scrImage.getWidth()*xf+yc] + \
-                (wxc+wyf)*self.scrImage.getImg().flat[self.scrImage.getWidth()*xc+yf] + \
-                (wxc+wyc)*self.scrImage.getImg().flat[self.scrImage.getWidth()*xc+yc])/4.0).astype(nu.uint8)
-            #v = nu.round(rc).astype(nu.int)
-            #z[::-1,i] = self.scrImage.getImg().flat[self.scrImage.getWidth()*v[:,0]+v[:,1]]
-        #myap = AgentPainter(z)
-        #myap.writeImage('tst')
-        return z
+        botCorrection = min(0,nu.floor(self.scrImage.getHeight()-max(botLeft,botRight)-1))
+        topCorrection = min(0,nu.floor(min(topLeft,topRight))-1)
+        print('tcor bcor',topCorrection,botCorrection)
+        r = (nu.array((topLeft-topCorrection,0)),
+             nu.array((topRight-topCorrection,self.scrImage.getWidth())),
+             nu.array((botLeft+botCorrection,0)),
+             nu.array((botRight+botCorrection,self.scrImage.getWidth())),
+             nu.array((bot+botCorrection,hMid)))
+        print('tl,tr,bl,br,bm')
+        for p in r:
+            print(p)
+        return r
 
     def draw(self):
         for staff in self.staffs:
@@ -475,11 +424,17 @@ class System(object):
                                   offset=0)
         print('default angle for this system',defBarAngle)
         #cols = selectColumns(self.getVSums(),self.colGroups)[0]
-        systemTop = self.staffs[0].getTopBottom()[0]
-        systemBot = self.staffs[1].getTopBottom()[1]
-        rows = selectColumns(self.getHSums(),3)[0] # sounds funny, change name of function
+        systemTopL = self.getRotator().rotate(self.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
+        systemBotL = self.getRotator().rotate(self.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
+        #imgs = self.getCorrectedImgSegment()[r,:]
+        print('stl',systemTopL)
+        print('sbl',systemBotL)
+        rows = [p for p in selectColumns(self.getHSums(),5)[0] if systemTopL <= p <= systemBotL] # sounds funny, change name of function
+        
         finalStage = False
         k = 0
+        ap = AgentPainter(self.getCorrectedImgSegment())
+        draw = True
         for i,r in enumerate(rows[:int(.3*len(rows))]):
             agentsnew = assignToAgents(self.getCorrectedImgSegment()[r,:],agents,BarAgent,
                                        self.getCorrectedImgSegment().shape[1],vert=r,fixAgents=finalStage)
@@ -488,42 +443,96 @@ class System(object):
             if len(agents) > 1:
                 k = sortBarAgents(agents)
             agents = agents[:20]
+            if draw:
+                ap.reset()
+                ap.paintHLine(r)
+                for a in agents:
+                    ap.register(a)
+                    ap.drawAgentGood(a,-300,300)
+                f0,ext = os.path.splitext(fn)
+                print(f0,ext)
 
-        for i,a in enumerate(agents):
-            a.points = self.backTransform(a.points)
-            a.mean = self.backTransform(a.mean)
-            a.targetAngle -= self.getStaffAngle()
-            print('{0} {1}'.format(i,a))
+            ap.writeImage(f0+'-{0:04d}-r{1}'.format(i,r)+'.png')
+        #for i,a in enumerate(agents):
+        #    a.points = self.backTransform(a.points)
+        #    a.mean = self.backTransform(a.mean)
+        #    a.targetAngle -= self.getStaffAngle()
+        #    print('{0} {1}'.format(i,a))
         return agents[:k]
 
-    def getcorrectedImgSegmentNew(self):
-        # find the dimesions of the tilted box inside the system's upper and lower
-        # border
-        #Qg = 
-        #Ql = 0
-        #Hn = 
-        systemHeight = self.getLowerLeft()[0]-self.getUpperLeft()[0]
+    def getSystemWidth(self):
         # this gets cut off from the width, to fit in the page rotated
-        cutOff = sysHeight*nu.tan(nu.pi*self.getStaffAngle())
-        systemWidth = self.scrImage.getWidth()/nu.cos(nu.pi*self.getStaffAngle()) - cutOff
-        Ql = nu.array((systemHeight,systemWidth/2.0))
-        r = Rotator(self.getStaffAngle(),self.Qg,Ql)
+        cutOff = nu.abs(self.getSystemHeight()*nu.tan(nu.pi*self.getStaffAngle()))
+        systemWidth = self.scrImage.getWidth()/nu.cos(nu.pi*self.getStaffAngle()) - 2*cutOff
+        systemWidth = int((nu.floor(systemWidth/2.0)-1)*2+1)
+        return systemWidth
+
+    def getSystemHeight(self):
+        return self.getLowerLeft()[0]-self.getUpperLeft()[0]
         
+    @getter
+    def getRotator(self):
+        return Rotator(self.getStaffAngle(),self.getLowerMid(),self.getLowerMidLocal())
+
+    @getter
+    def getCorrectedImgSegment(self):
+        halfSystemWidth = int((self.getSystemWidth()-1)/2)
+        r = Rotator(self.getStaffAngle(),self.getLowerMid(),self.getLowerMidLocal())
+        xx,yy = nu.mgrid[0:self.getSystemHeight(),-halfSystemWidth:halfSystemWidth]
+        yy += self.getLowerMidLocal()[1]
+        xxr,yyr = r.derotate(xx,yy)
+
+        xf = nu.floor(xxr).astype(nu.int)
+        xc = nu.ceil(xxr).astype(nu.int)
+        yf = nu.floor(yyr).astype(nu.int)
+        yc = nu.ceil(yyr).astype(nu.int)
+        wxc = xxr%1
+        wxf = 1-wxc
+        wyc = yyr%1
+        wyf = 1-wyc
+
+        #cimg = self.scrImage.getImg()[nu.round(xxr).astype(nu.int),nu.round(yyr).astype(nu.int)]
+        cimg = (((wxf+wyf)*self.scrImage.getImg()[xf,yf] + \
+                (wxf+wyc)*self.scrImage.getImg()[xf,yc] + \
+                (wxc+wyf)*self.scrImage.getImg()[xc,yf] + \
+                (wxc+wyc)*self.scrImage.getImg()[xc,yc])/4.0).astype(nu.uint8)
         
+        ap = AgentPainter(cimg)
+        ag = self.staffs[0].staffLineAgents[3]
+        x,y = r.rotate(ag.points[:,0]+ag.offset,ag.points[:,1])
+        ag.points = nu.column_stack((x-ag.offset,y))
+        ap.register(ag)
+        ap.drawAgentGood(ag)
+        ap.writeImage('tst.png')
+        return cimg
 
 class Rotator(object):
     def __init__(self,theta,og,ol):
         self.og = og
         self.ol = ol
         self.theta = theta
-    def rotate(self,xx,yy):
-        xxr = nu.cos(self.theta*nu.pi)*(xx-self.ol[0])-nu.sin(self.theta*nu.pi)*(yy-self.ol[1])
-        yyr = nu.sin(self.theta*nu.pi)*(xx-self.ol[0])+nu.cos(self.theta*nu.pi)*(yy-self.ol[1])
-        return xxr+self.og[0],yyr+self.og[1]
-    def derotate(self,xxr,yyr):
-        xx = nu.cos(-self.theta*nu.pi)*(xxr-self.og[0])-nu.sin(-self.theta*nu.pi)*(yyr-self.og[1])
-        yy = nu.sin(-self.theta*nu.pi)*(xxr-self.og[0])+nu.cos(-self.theta*nu.pi)*(yyr-self.og[1])
-        return xx+self.ol[0],yy+self.ol[1]
+
+    def rotate(self,x,y=None):
+        if y == None:
+            return nu.column_stack(self._rotate(x[:,0],x[:,1]))
+        else:
+            return self._rotate(x,y)
+
+    def derotate(self,x,y=None):
+        if y == None:
+            return nu.column_stack(self._derotate(x[:,0],x[:,1]))
+        else:
+            return self._derotate(x,y)
+
+    def _rotate(self,xx,yy):
+        xxr = nu.cos(self.theta*nu.pi)*(xx-self.og[0])-nu.sin(self.theta*nu.pi)*(yy-self.og[1])
+        yyr = nu.sin(self.theta*nu.pi)*(xx-self.og[0])+nu.cos(self.theta*nu.pi)*(yy-self.og[1])
+        return xxr+self.ol[0],yyr+self.ol[1]
+
+    def _derotate(self,xxr,yyr):
+        xx = nu.cos(-self.theta*nu.pi)*(xxr-self.ol[0])-nu.sin(-self.theta*nu.pi)*(yyr-self.ol[1])
+        yy = nu.sin(-self.theta*nu.pi)*(xxr-self.ol[0])+nu.cos(-self.theta*nu.pi)*(yyr-self.ol[1])
+        return xx+self.og[0],yy+self.og[1]
 
 
 def sortBarAgents(agents):
@@ -604,11 +613,12 @@ class ScoreImage(object):
                 
         sysSegs = []
         for i,system in enumerate(self.getSystems()):
-            if True: #i == 4:
+            if i == 2:
                 sys.stdout.write('drawing system {0}\n'.format(i))
                 sys.stdout.flush()
                 system.draw()
-                #sysSegs.append(system.getCorrectedImgSegment())
+                #system.getcorrectedImgSegmentNew()
+                sysSegs.append(system.getCorrectedImgSegment())
                 #x = nu.array([[50,50],[100,30],[0,0]])
                 #sH,sW = system.getCorrectedImgSegment().shape
                 #x1 = system.backTransform(nu.column_stack((nu.arange(sH),nu.zeros(sH))))
@@ -622,12 +632,11 @@ class ScoreImage(object):
                 #print(xr)
                 #nu.savetxt('/tmp/x.txt',x)
                 #nu.savetxt('/tmp/xr.txt',xr)
-                #barAgents = system.getBarLines()
+                barAgents = system.getBarLines()
                 #for a in barAgents:
                 #    self.ap.register(a)
                 #    self.ap.drawAgentGood(a,-500,500)
         self.ap.writeImage(self.fn)
-        return True
         shapes = nu.array([ss.shape for ss in sysSegs])
         ssH = nu.sum(shapes[:,0])
         ssW = nu.max(shapes[:,1])
@@ -638,8 +647,8 @@ class ScoreImage(object):
             horzOffset = 0#int(nu.floor((ssW-w)/2.))
             ssImg[x0:x0+h,horzOffset:horzOffset+w] = ss
             x0 += h
-        #ap1 = AgentPainter(ssImg)
-        #ap1.writeImage(self.fn.replace('.png','-corr.png'))
+        ap1 = AgentPainter(ssImg)
+        ap1.writeImage(self.fn.replace('.png','-corr.png'))
 
     def drawImageSelection(self,selection):
         # draw segment boundaries
@@ -699,74 +708,9 @@ class ScoreImage(object):
         amax = angles[nu.argmax(globalAngleHist)]
         return distributions.norm(amax,.5/180.0).pdf(angles)
 
-
-def getNumberedBarCoords(barpoints,scrImage):
-    systems = si.getSystems()
-    assignBarlinesToSystems(systems,barpoints)
-    bar = 0
-    bars = {}
-    for system in systems:
-        if system.barPoints.shape[0] == 0:
-            tl = (system.staffs[0].staffLineAgents[0].getDrawMean()[0],0)
-            br = (system.staffs[1].staffLineAgents[-1].getDrawMean()[0],scrImage.getWidth()-1)
-            wh = (br[0]-tl[0],br[1]-tl[1])
-            bars[bar] = bars.get(bar,[])+[reversed(tl),reversed(wh)]
-        elif system.barPoints.shape[0] == 1:
-            tl = (system.staffs[0].staffLineAgents[0].getDrawMean()[0],system.barPoints[0,0])
-            br = (system.staffs[1].staffLineAgents[-1].getDrawMean()[0],scrImage.getWidth()-1)
-            wh = (br[0]-tl[0],br[1]-tl[1])
-            bars[bar] = bars.get(bar,[])+[reversed(tl),reversed(wh)]
-        else:
-            for i in range(1,system.barPoints.shape[0]):
-                tl = (system.staffs[0].staffLineAgents[0].getDrawMean()[0],system.barPoints[i-1,0])
-                br = (system.staffs[1].staffLineAgents[-1].getDrawMean()[0],system.barPoints[i,0])
-                wh = (br[0]-tl[0],br[1]-tl[1])
-                bars[bar] = bars.get(bar,[])+[reversed(tl),reversed(wh)]
-                bar += 1
-    bs = bars.keys()
-    bs.sort()
-    fn = os.path.join('/tmp',os.path.splitext(os.path.basename(scrImage.fn))[0]+'.txt')
-
-    imgnr = None
-    barnr = None
-    imgbarfile = '/tmp/imgbar.txt'
-
-    d = nu.loadtxt(imgbarfile)
-    imgnr = int(d[0])
-    barnr = int(d[1])
-
-    assert imgnr != None
-    assert barnr != None
-    with open(fn,'w') as f:
-        for b in bs:
-            f.write('{0} {1} '.format(b+barnr,imgnr))
-            for xy in bars[b]:
-                for p in xy:
-                    f.write('{0:d} '.format(int(nu.round(p))))
-            f.write('\n')
-    nu.savetxt(imgbarfile,nu.array([imgnr+1,barnr+len(bs)]))
-
-def assignBarlinesToSystems(systems,barpoints):
-    for xy in barpoints:
-        assigned = False
-        for system in systems:
-            if system.getUpperLeft()[0] < xy[1] < system.getLowerLeft()[0]:
-                system.addBarPoint(xy)
-                assigned = True
-                break
-        if not assigned:
-            print('warning, could not assign point',xy)
-    for system in systems:
-        system.barPoints = nu.array(system.barPoints).reshape((-1,2))
-
 if __name__ == '__main__':
     fn = sys.argv[1]
-    barfile = sys.argv[2]
     si = ScoreImage(fn)
-    #si.drawImage()
-    # barpoints in format: horz vert
-    barpoints = nu.loadtxt(barfile)
-    getNumberedBarCoords(barpoints,si)
     si.drawImage()
     sys.exit()
 
