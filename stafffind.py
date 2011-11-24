@@ -19,7 +19,7 @@ def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False):
     else:
         return agents
     if vert is not None:
-        #print('candidates',candidates)
+        
         candidates = [[nu.array([vert,horz]) for horz in horzz] for horzz in candidates]
     elif horz is not None:
         candidates = [[nu.array([vert,horz]) for vert in vertz] for vertz in candidates]
@@ -36,8 +36,14 @@ def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False):
         bids = nu.zeros((len(candidates),len(agents)))
         for i,c in enumerate(candidates):
             bids[i,:] = nu.array([nu.abs(a.bid(*c)) for a in agents])
-            
         sortedBets = nu.argsort(bids,1)
+        if False: #vert == 326:
+            for j,a in enumerate(agents):
+                print('{0} {1}'.format(j,a))
+            print('candidates',candidates)
+            print(sortedBets)
+            print(bids[-1,sortedBets[-1,:]])
+            sys.exit()
         cidx = nu.argsort(sortedBets[:,0])
         adopters = set([])
         for i in cidx:
@@ -104,6 +110,7 @@ def mergeAgents(agents):
     l = cluster.hierarchy.complete(pdist)
     c = cluster.hierarchy.fcluster(l,agents[0].maxError,criterion='distance')
     idict = argpartition(lambda x: x[0], nu.column_stack((c,nu.arange(len(c)))))
+    died = []
     for v in idict.values():
         if len(v) == 1:
             newagents.append(agents[v[0]])
@@ -112,7 +119,8 @@ def mergeAgents(agents):
             for i in v[1:]:
                 a.merge(agents[i])
             newagents.append(a)
-    return newagents
+            died.extend(v[1:])
+    return newagents,died
 
 def sortAgents(agents,k=10):
     agents.sort(key=lambda x: -x.score)
@@ -215,8 +223,8 @@ class VerticalSegment(object):
             agentsnew,died = assignToAgents(self.getImgSegment()[:,c],agents,StaffAgent,
                                             self.scrImage.getWidth(),horz=c,fixAgents=finalStage)
             if len(agentsnew) > 1:
-                agentsnew = mergeAgents(agentsnew)
-            
+                agentsnew,d = mergeAgents(agentsnew)
+                
             agents = agentsnew
             agents.sort(key=lambda x: -x.score)
 
@@ -425,46 +433,73 @@ class System(object):
                                   minScore=-5,
                                   offset=0)
         print('default angle for this system',defBarAngle)
-        #cols = selectColumns(self.getVSums(),self.colGroups)[0]
         systemTopL = self.getRotator().rotate(self.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
         systemBotL = self.getRotator().rotate(self.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
-        #imgs = self.getCorrectedImgSegment()[r,:]
-        print('stl',systemTopL)
-        print('sbl',systemBotL)
-        rows = [p for p in selectColumns(self.getHSums(),5)[0] if systemTopL <= p <= systemBotL] # sounds funny, change name of function
+        bins = 9
+        rows = [p for p in selectColumns(self.getHSums(),bins)[0] if systemTopL <= p <= systemBotL] # sounds funny, change name of function
         
         finalStage = False
         k = 0
         ap = AgentPainter(self.getCorrectedImgSegment())
-        draw = True
+        draw = False
         for i,r in enumerate(rows[:int(.3*len(rows))]):
             agentsnew,died = assignToAgents(self.getCorrectedImgSegment()[r,:],agents,BarAgent,
                                             self.getCorrectedImgSegment().shape[1],vert=r,fixAgents=finalStage)
+            if len(agents) > 2:
+                agentsnew,d = mergeAgents(agents)
+                died.extend(d)
             agents = agentsnew
             print('row',i)
             if len(agents) > 1:
                 k = sortBarAgents(agents)
-            #agents = agents[:20]
             if draw:
                 ap.reset()
                 ap.paintHLine(r)
                 for a in died:
+                    ap.drawAgentGood(a,-300,300)
                     ap.unregister(a)
-                for a in agents:
-                    print(a)
+                for j,a in enumerate(agents):
+                    print('{0} {1}'.format(j,a))
                     ap.register(a)
                     ap.drawAgentGood(a,-300,300)
                 f0,ext = os.path.splitext(fn)
                 print(f0,ext)
-
-            ap.writeImage(f0+'-{0:04d}-r{1}'.format(i,r)+'.png')
+                ap.writeImage(f0+'-{0:04d}-r{1}'.format(i,r)+'.png')
         #for i,a in enumerate(agents):
         #    a.points = self.backTransform(a.points)
         #    a.mean = self.backTransform(a.mean)
         #    a.targetAngle -= self.getStaffAngle()
         #    print('{0} {1}'.format(i,a))
-        return agents[:k]
+        agents = agents[:k]
+        draw = True
+        if draw:
+            ap.reset()
+            for a in agents:
+                print(a)
+                ap.register(a)
+                ap.drawAgentGood(a,-300,300)
+            f0,ext = os.path.splitext(fn)
+            print(f0,ext)
+            ap.writeImage(f0+'-final.png')
+        for a in agents:
+            self.assesBarLine(a)
+        return agents
 
+    def assesBarLine(self,agent):
+        system0Top = self.getRotator().rotate(self.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
+        system0Bot = self.getRotator().rotate(self.staffs[0].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
+        system1Top = self.getRotator().rotate(self.staffs[1].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
+        system1Bot = self.getRotator().rotate(self.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
+        # staff 0:
+        horz = agent.mean[1]
+        l0 = self.getCorrectedImgSegment()[system0Top:system0Bot,horz]
+        l1 = self.getCorrectedImgSegment()[system1Top:system1Bot,horz]
+        print(agent)
+        print(l0)
+        print(l1)
+        print(l0.shape[0],l1.shape[0],nu.sum(l0)+nu.sum(l1),255*(l0.shape[0]+l1.shape[0]))
+        pass
+        
     def getSystemWidth(self):
         # this gets cut off from the width, to fit in the page rotated
         cutOff = nu.abs(self.getSystemHeight()*nu.tan(nu.pi*self.getStaffAngle()))

@@ -63,7 +63,7 @@ class AgentPainter(object):
             alpha = min(.8,max(.1,.5+float(agent.score)/max(1,agent.age)))
             xy = xy[idx,:]
             if xy.shape[0] > 0:
-                self.paintRav(xy,c2)
+                self.paintRav(xy,c2,alpha)
             #for r in range(rmin,rmax):
             #    x = r*nu.sin(agent.getAngle()*nu.pi)+agent.getDrawMean()[0]
             #    y = r*nu.cos(agent.getAngle()*nu.pi)+agent.getDrawMean()[1]
@@ -84,9 +84,15 @@ class AgentPainter(object):
     def paintRav(self,coords,color,alpha=1):
         idx = (self.img.shape[2]*nu.round(coords[:,0])+nu.round(coords[:,1])).astype(nu.int64)
         #print(idx)
-        self.img[0,:,:].flat[idx] = (1-alpha)*self.img[0,:,:].flat[idx]+alpha*color[0]
-        self.img[1,:,:].flat[idx] = (1-alpha)*self.img[1,:,:].flat[idx]+alpha*color[1]
-        self.img[2,:,:].flat[idx] = (1-alpha)*self.img[2,:,:].flat[idx]+alpha*color[2]
+        #self.img[0,:,:].flat[idx] = (1-alpha)*self.img[0,:,:].flat[idx]+alpha*color[0]
+        #self.img[1,:,:].flat[idx] = (1-alpha)*self.img[1,:,:].flat[idx]+alpha*color[1]
+        #self.img[2,:,:].flat[idx] = (1-alpha)*self.img[2,:,:].flat[idx]+alpha*color[2]
+        self.img[0,:,:].flat[idx] *= (1-alpha)
+        self.img[1,:,:].flat[idx] *= (1-alpha)
+        self.img[2,:,:].flat[idx] *= (1-alpha)
+        self.img[0,:,:].flat[idx] += alpha*color[0]
+        self.img[1,:,:].flat[idx] += alpha*color[1]
+        self.img[2,:,:].flat[idx] += alpha*color[2]
         #self.img[:,int(coord[0]),int(coord[1])] = (1-alpha)*self.img[:,int(coord[0]),int(coord[1])]+alpha*color
 
     def paint(self,coord,color,alpha=1):
@@ -281,7 +287,7 @@ class Agent(object):
             #print(self)
             #print('lw',lw,self.getLineWidth(),self.getLineWidthStd())
             #print('prepare point add',xy0,xy1)
-            if False: #nu.sign(error0) != nu.sign(error1):
+            if nu.sign(error0) != nu.sign(error1):
                 xy = self.getIntersection(xy0,xy1)
             else:
                 if lw <= self.getLineWidth() + max(1,self.getLineWidthStd()):
@@ -317,14 +323,15 @@ class Agent(object):
         if nu.abs(self._getAngleDistance(angle)) > self.maxAngleDev:
             return self.maxError+1
         # print('adjusting angle:',self.getAngle(),'to',angle)
+        anglePen = nu.abs(self.getAngle()-angle)
         error0 = nu.dot((xy0-self.mean),nu.array([nu.cos(angle*nu.pi),-nu.sin(angle*nu.pi)]))
         if xy1 == None:
-            return nu.abs(error0)
+            return nu.abs(error0)+anglePen
         error1 = nu.dot(xy1-self.mean,nu.array([nu.cos(angle*nu.pi),-nu.sin(angle*nu.pi)]))
         if nu.sign(error0) != nu.sign(error1):
-            return 0.0
+            return 0.0+anglePen
         else:
-            return min(nu.abs(error0),nu.abs(error1))
+            return min(nu.abs(error0),nu.abs(error1))+anglePen
 
     def award(self,xy0,xy1=None):
         self.adopted = True
