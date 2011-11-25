@@ -87,7 +87,7 @@ def selectColumns(vsums,bins):
 
 def mergeAgents(agents):
     if len(agents) < 3:
-        return agents
+        return agents,[]
     newagents = []
     N = len(agents)
     pdist = []
@@ -222,9 +222,8 @@ class VerticalSegment(object):
                 break
             agentsnew,died = assignToAgents(self.getImgSegment()[:,c],agents,StaffAgent,
                                             self.scrImage.getWidth(),horz=c,fixAgents=finalStage)
-            if len(agentsnew) > 1:
+            if len(agentsnew) > 3:
                 agentsnew,d = mergeAgents(agentsnew)
-                
             agents = agentsnew
             agents.sort(key=lambda x: -x.score)
 
@@ -442,7 +441,7 @@ class System(object):
         k = 0
         ap = AgentPainter(self.getCorrectedImgSegment())
         draw = False
-        for i,r in enumerate(rows[:int(.3*len(rows))]):
+        for i,r in enumerate(rows[:int(.1*len(rows))]):
             agentsnew,died = assignToAgents(self.getCorrectedImgSegment()[r,:],agents,BarAgent,
                                             self.getCorrectedImgSegment().shape[1],vert=r,fixAgents=finalStage)
             if len(agents) > 2:
@@ -471,7 +470,7 @@ class System(object):
         #    a.targetAngle -= self.getStaffAngle()
         #    print('{0} {1}'.format(i,a))
         agents = agents[:k]
-        draw = True
+        draw = False
         if draw:
             ap.reset()
             for a in agents:
@@ -480,25 +479,68 @@ class System(object):
                 ap.drawAgentGood(a,-300,300)
             f0,ext = os.path.splitext(fn)
             print(f0,ext)
-            ap.writeImage(f0+'-final.png')
-        for a in agents:
-            self.assesBarLine(a)
+            ap.writeImage(f0+'-sys{0:04d}.png'.format(int(self.getLowerLeft()[0])))
+        #for a in agents:
+        #    self.assessBarLine(a)
+        agents = self.selectBarLines(agents)
         return agents
 
-    def assesBarLine(self,agent):
+    def selectBarLines(self,agents):
+        scores = nu.array([self.assessBarLine(a) for a in agents])
+        m = nu.median(scores,0)
+        scores[scores[:,0] > m[0],0] = m[0]
+        scores[scores[:,1] > m[1],1] = m[1]
+        scores[scores[:,2] > m[2],2] = m[2]
+        scores[:,0] /= m[0]
+        scores[:,1] /= m[1]
+        scores[:,2] /= m[2]
+        print(scores)
+        print(nu.mean(scores,1))
+        idx = nu.mean(scores,1)>.8
+        return [agents[i] for i in range(len(agents)) if idx[i]]
+
+    def assessBarLineHorzNeighbourhood(self,agent,system0Top,system0Bot,system1Top,system1Bot):
+        horz = agent.mean[1]
+        l = horz - nu.round(agent.getLineWidth())
+        r = horz + nu.round(agent.getLineWidth())
+        assert 0 < l-1
+        assert r+1 < self.getCorrectedImgSegment().shape[1]-1
+        okBlack = 255*(nu.sum([a.getLineWidth() for a in self.staffs[0].staffLineAgents])+
+                       nu.sum([a.getLineWidth() for a in self.staffs[1].staffLineAgents]))
+        actualBlack0 = nu.sum(nu.mean(self.getCorrectedImgSegment()[system0Top:system0Bot,l-1:l+1],1))
+        actualBlack1 = nu.sum(nu.mean(self.getCorrectedImgSegment()[system1Top:system1Bot,r-1:r+1],1))
+        return 1.0/(1+nu.abs(1-(.5*okBlack/float(actualBlack0+actualBlack1))))
+
+    def assessBarLineContinuity(self,agent,system0Top,system0Bot,system1Top,system1Bot):
+        horz = agent.mean[1]
+        assert 0 < horz - 1
+        assert horz + 1 < self.getCorrectedImgSegment().shape[1]-1
+        w = system0Bot-system0Top + system1Bot-system1Top
+        l0 = nu.sum(nu.max(self.getCorrectedImgSegment()[system0Top:system0Bot,horz-1:horz+1],1))
+        l1 = nu.sum(nu.max(self.getCorrectedImgSegment()[system1Top:system1Bot,horz-1:horz+1],1))
+        return (l0+l1)/float(255*w)
+
+    def assessBarLineEndings(self,agent,system0Top,system0Bot,system1Top,system1Bot):
+        horz = agent.mean[1]
+        assert 0 < horz - 1
+        assert horz + 1 < self.getCorrectedImgSegment().shape[1]-1
+        # todo: check vertical ranges
+        w1 = int(.1*(system0Bot-system0Top))
+        w2 = int(.2*(system0Bot-system0Top))
+        l0 = nu.sum(nu.mean(self.getCorrectedImgSegment()[system0Top-w2:system0Top-w1,horz-1:horz+1],1))
+        l1 = nu.sum(nu.mean(self.getCorrectedImgSegment()[system1Bot+w1:system1Bot+w2,horz-1:horz+1],1))
+        return 1.0/(1+(l0+l1)/255.)
+
+    def assessBarLine(self,agent):
         system0Top = self.getRotator().rotate(self.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
         system0Bot = self.getRotator().rotate(self.staffs[0].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
         system1Top = self.getRotator().rotate(self.staffs[1].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
         system1Bot = self.getRotator().rotate(self.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
         # staff 0:
-        horz = agent.mean[1]
-        l0 = self.getCorrectedImgSegment()[system0Top:system0Bot,horz]
-        l1 = self.getCorrectedImgSegment()[system1Top:system1Bot,horz]
-        print(agent)
-        print(l0)
-        print(l1)
-        print(l0.shape[0],l1.shape[0],nu.sum(l0)+nu.sum(l1),255*(l0.shape[0]+l1.shape[0]))
-        pass
+        bc = self.assessBarLineContinuity(agent,system0Top,system0Bot,system1Top,system1Bot)
+        be = self.assessBarLineEndings(agent,system0Top,system0Bot,system1Top,system1Bot)
+        bhn = self.assessBarLineHorzNeighbourhood(agent,system0Top,system0Bot,system1Top,system1Bot)
+        return [bc,be,bhn]
         
     def getSystemWidth(self):
         # this gets cut off from the width, to fit in the page rotated
@@ -517,7 +559,8 @@ class System(object):
     @getter
     def getCorrectedImgSegment(self):
         halfSystemWidth = int((self.getSystemWidth()-1)/2)
-        r = Rotator(self.getStaffAngle(),self.getLowerMid(),self.getLowerMidLocal())
+        #r = Rotator(self.getStaffAngle(),self.getLowerMid(),self.getLowerMidLocal())
+        r = self.getRotator()
         xx,yy = nu.mgrid[0:self.getSystemHeight(),-halfSystemWidth:halfSystemWidth]
         yy += self.getLowerMidLocal()[1]
         xxr,yyr = r.derotate(xx,yy)
@@ -537,13 +580,13 @@ class System(object):
                 (wxc+wyf)*self.scrImage.getImg()[xc,yf] + \
                 (wxc+wyc)*self.scrImage.getImg()[xc,yc])/4.0).astype(nu.uint8)
         
-        ap = AgentPainter(cimg)
-        ag = self.staffs[0].staffLineAgents[3]
-        x,y = r.rotate(ag.points[:,0]+ag.offset,ag.points[:,1])
-        ag.points = nu.column_stack((x-ag.offset,y))
-        ap.register(ag)
-        ap.drawAgentGood(ag)
-        ap.writeImage('tst.png')
+        #ap = AgentPainter(cimg)
+        #ag = self.staffs[0].staffLineAgents[3]
+        #x,y = r.rotate(ag.points[:,0]+ag.offset,ag.points[:,1])
+        #ag.points = nu.column_stack((x-ag.offset,y))
+        #ap.register(ag)
+        #ap.drawAgentGood(ag)
+        #ap.writeImage('tst.png')
         return cimg
 
 class Rotator(object):
@@ -581,7 +624,7 @@ def sortBarAgents(agents):
     hyp = 0
     if len(scores) > 1:
         hyp = nu.argmin(nu.diff(scores))
-        print(scores)
+        #print(scores)
         print('guessing:',hyp+1)
     return hyp+1
 
@@ -653,30 +696,18 @@ class ScoreImage(object):
                 
         sysSegs = []
         for i,system in enumerate(self.getSystems()):
-            if i == 2:
+            if True: # i == 0:
                 sys.stdout.write('drawing system {0}\n'.format(i))
                 sys.stdout.flush()
                 system.draw()
-                #system.getcorrectedImgSegmentNew()
                 sysSegs.append(system.getCorrectedImgSegment())
-                #x = nu.array([[50,50],[100,30],[0,0]])
-                #sH,sW = system.getCorrectedImgSegment().shape
-                #x1 = system.backTransform(nu.column_stack((nu.arange(sH),nu.zeros(sH))))
-                #x2 = system.backTransform(nu.column_stack((nu.arange(sH),sW-1+nu.zeros(sH))))
-                #x3 = system.backTransform(nu.column_stack((nu.zeros(sW),nu.arange(sW))))
-                #x4 = system.backTransform(nu.column_stack((nu.zeros(sW)+sH-1,nu.arange(sW))))
-                #self.ap.paintRav(x1,nu.array([255,0,0]))
-                #self.ap.paintRav(x2,nu.array([255,0,0]))
-                #self.ap.paintRav(x3,nu.array([255,0,0]))
-                #self.ap.paintRav(x4,nu.array([255,0,0]))
-                #print(xr)
-                #nu.savetxt('/tmp/x.txt',x)
-                #nu.savetxt('/tmp/xr.txt',xr)
                 barAgents = system.getBarLines()
-                #for a in barAgents:
-                #    self.ap.register(a)
-                #    self.ap.drawAgentGood(a,-500,500)
+                for a in barAgents:
+                    self.ap.register(a)
+                    self.ap.drawAgent(a,-300,300,system.getRotator())
         self.ap.writeImage(self.fn)
+        if True:
+            return True
         shapes = nu.array([ss.shape for ss in sysSegs])
         ssH = nu.sum(shapes[:,0])
         ssW = nu.max(shapes[:,1])
@@ -690,24 +721,6 @@ class ScoreImage(object):
         ap1 = AgentPainter(ssImg)
         ap1.writeImage(self.fn.replace('.png','-corr.png'))
 
-    def drawImageSelection(self,selection):
-        # draw segment boundaries
-        for i,vs in enumerate(self.getVSegments()):
-            self.ap.paintHLine(vs.bottom,step=2)
-
-        for vs in self.getNonStaffSegments():
-            for j in range(vs.top,vs.bottom,4):
-                self.ap.paintHLine(j,alpha=0.9,step=4)
-
-        ss = self.getStaffSegments()
-        
-        for i in selection:
-            staffs = [Staff(self,x) for x in ss[i].getStaffLines()]
-            system = System(self,staffs)
-            system.draw()
-            system.getBarLines()
-            print(system)
-        self.ap.writeImage(self.fn)
 
     @getter
     def getHSums(self):

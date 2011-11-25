@@ -81,6 +81,35 @@ class AgentPainter(object):
             #for p in agent.getDrawPoints():
             #    self.paint(p,c1)
 
+    def drawAgent(self,agent,rmin=-100,rmax=100,rotator=None):
+        if self.agents.has_key(agent):
+            c = self.colors[self.agents[agent]]
+            c1 = nu.minimum(255,c+50)
+            c2 = nu.maximum(0,c-100)
+            M,N = self.img.shape[1:]
+            rng = nu.arange(rmin,rmax)
+            xy = nu.round(nu.column_stack((rng*nu.sin(agent.getAngle()*nu.pi)+agent.getDrawMean()[0],
+                                           rng*nu.cos(agent.getAngle()*nu.pi)+agent.getDrawMean()[1])))
+            if rotator:
+                xy = rotator.derotate(xy)
+            idx = nu.logical_and(nu.logical_and(xy[:,0]>=0,xy[:,0]<M),
+                                 nu.logical_and(xy[:,1]>=0,xy[:,1]<N))
+            alpha = min(.8,max(.1,.5+float(agent.score)/max(1,agent.age)))
+            xy = xy[idx,:].astype(nu.int)
+            if xy.shape[0] > 0:
+                self.paintRav(xy,c2,alpha)
+
+            # first point
+            fPoint = agent.getDrawPoints()[0].reshape((1,2))
+            if rotator:
+                fPoint = rotator.derotate(fPoint)[0,:]
+            self.paintRect(fPoint[0],fPoint[0],fPoint[1],fPoint[1],c)
+
+            drp = agent.getDrawPoints()
+            if rotator:
+                drp = rotator.derotate(drp)
+            self.paintRav(drp,c1)
+
     def paintRav(self,coords,color,alpha=1):
         idx = (self.img.shape[2]*nu.round(coords[:,0])+nu.round(coords[:,1])).astype(nu.int64)
         #print(idx)
@@ -234,8 +263,8 @@ class Agent(object):
         errorOK = self.error <= self.maxError
         successRateOK = self.score >= self.minScore
         r = not all((angleOK,errorOK,successRateOK))
-        if r:
-            print('Died: {0}; angleOK: {1}; errorOK: {2}, scoreOK: {3}'.format(self,angleOK,errorOK,successRateOK))
+        #if r:
+        #    print('Died: {0}; angleOK: {1}; errorOK: {2}, scoreOK: {3}'.format(self,angleOK,errorOK,successRateOK))
         return r
   
     def getIntersection(self,xy0,xy1):
