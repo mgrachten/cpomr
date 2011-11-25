@@ -9,7 +9,7 @@ from utilities import argpartition, partition, makeColors
 from agent import Agent, AgentPainter, makeAgentClass
 
 
-def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False):
+def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False,maxWidth=nu.inf):
     data = nu.nonzero(v)[0]
     if len(data) > 1:
         candidates = [tuple(x) if len(x)==1 else (x[0],x[-1]) for x in 
@@ -18,6 +18,7 @@ def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False):
         candidates = [tuple(data)]
     else:
         return agents
+    #print(candidates)
     if vert is not None:
         
         candidates = [[nu.array([vert,horz]) for horz in horzz] for horzz in candidates]
@@ -49,11 +50,19 @@ def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False):
         for i in cidx:
             bestBidder = sortedBets[i,0]
             bestBet = bids[i,bestBidder]
-            if bestBet <= agents[bestBidder].maxError and not bestBidder in adopters:
+            #print('sortedBets')
+            #print(sortedBets[i,:])
+            #print(bids[i,sortedBets[i,:]])
+            bidderHas = bestBidder in adopters
+            if bestBet <= agents[bestBidder].maxError and not bidderHas:
+                # nu.sum((candidates[i][0]-candidates[i][-1])**2)**.5 < maxWidth and 
+                #print('{0} goes to {1}'.format(candidates[i][0][1],agents[bestBidder].id))
                 agents[bestBidder].award(*candidates[i])
                 adopters.add(bestBidder)
                 newagents.append(agents[bestBidder])
             else:
+                #print('{0} unadopted, best {1}, available: {2}'.format(candidates[i][0][1],
+                #                                                       agents[bestBidder].id,bidderHas))
                 unadopted.append(i)
         newagents.extend([agents[x] for x in set(range(len(agents))).difference(adopters)])
     if not fixAgents:
@@ -420,18 +429,22 @@ class System(object):
     def getHSums(self):
         return nu.sum(self.getCorrectedImgSegment(),1)
 
+    @getter
+    def getStaffLineWidth(self):
+        return nu.mean([a.getLineWidth() for a in self.staffs[0].staffLineAgents]+
+                       [a.getLineWidth() for a in self.staffs[1].staffLineAgents])
     def getBarLines(self):
         agents = []
         defBarAngle = .5 #(self.getStaffAngle()+.5)%1
         print('default staff angle for this system',self.getStaffAngle())
-        print('default bar angle for this system',defBarAngle)
-        assert defBarAngle >= 0
+        #print('default bar angle for this system',defBarAngle)
+        #assert defBarAngle >= 0
         BarAgent = makeAgentClass(targetAngle=defBarAngle,
-                                  maxAngleDev=2/180.,
-                                  maxError=.5,
+                                  maxAngleDev=3/180.,
+                                  maxError=3,
                                   minScore=-5,
                                   offset=0)
-        print('default angle for this system',defBarAngle)
+        maxWidth = nu.inf#3*self.getStaffLineWidth()
         systemTopL = self.getRotator().rotate(self.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
         systemBotL = self.getRotator().rotate(self.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
         bins = 9
@@ -440,36 +453,44 @@ class System(object):
         finalStage = False
         k = 0
         ap = AgentPainter(self.getCorrectedImgSegment())
+        draw = True
         draw = False
         for i,r in enumerate(rows[:int(.1*len(rows))]):
-            agentsnew,died = assignToAgents(self.getCorrectedImgSegment()[r,:],agents,BarAgent,
+            died = []
+            agentsnew,d = assignToAgents(self.getCorrectedImgSegment()[r,:],agents,BarAgent,
                                             self.getCorrectedImgSegment().shape[1],vert=r,fixAgents=finalStage)
+            died.extend(d)
+
             if len(agents) > 2:
-                agentsnew,d = mergeAgents(agents)
+                agentsnew,d = mergeAgents(agentsnew)
                 died.extend(d)
             agents = agentsnew
+            #assert len(set(agents).intersection(set(died))) == 0
             print('row',i)
             if len(agents) > 1:
-                k = sortBarAgents(agents)
+                agents.sort(key=lambda x: -x.score)
+                #k = sortBarAgents(agents)
             if draw:
                 ap.reset()
                 ap.paintHLine(r)
                 for a in died:
-                    ap.drawAgentGood(a,-300,300)
+                    #ap.drawAgent(a,-300,300)
                     ap.unregister(a)
                 for j,a in enumerate(agents):
                     print('{0} {1}'.format(j,a))
                     ap.register(a)
-                    ap.drawAgentGood(a,-300,300)
+                    ap.drawAgent(a,-300,300)
                 f0,ext = os.path.splitext(fn)
                 print(f0,ext)
                 ap.writeImage(f0+'-{0:04d}-r{1}'.format(i,r)+'.png')
-        #for i,a in enumerate(agents):
-        #    a.points = self.backTransform(a.points)
-        #    a.mean = self.backTransform(a.mean)
-        #    a.targetAngle -= self.getStaffAngle()
-        #    print('{0} {1}'.format(i,a))
-        agents = agents[:k]
+        k = sortBarAgents(agents)
+        bAgents = agents[:k]
+        meanScore = nu.mean([a.score for a in bAgents])
+        meanAge = nu.mean([a.age for a in bAgents])
+        for j,a in enumerate(agents):
+            print('{0} {1}'.format(j,a))
+        agents = [a for a in agents if a.score > .3*meanScore and a.age > .3*meanAge]
+        print('chose {0} agents'.format(len(agents)))
         draw = False
         if draw:
             ap.reset()
@@ -482,7 +503,7 @@ class System(object):
             ap.writeImage(f0+'-sys{0:04d}.png'.format(int(self.getLowerLeft()[0])))
         #for a in agents:
         #    self.assessBarLine(a)
-        agents = self.selectBarLines(agents)
+        #agents = self.selectBarLines(agents)
         return agents
 
     def selectBarLines(self,agents):
@@ -696,7 +717,7 @@ class ScoreImage(object):
                 
         sysSegs = []
         for i,system in enumerate(self.getSystems()):
-            if True: # i == 0:
+            if True: #i == 1:
                 sys.stdout.write('drawing system {0}\n'.format(i))
                 sys.stdout.flush()
                 system.draw()

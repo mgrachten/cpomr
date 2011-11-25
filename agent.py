@@ -33,6 +33,8 @@ class AgentPainter(object):
         if len(available) < 1:
             print('no paint slots available')
             return False
+        #print('registring {0}'.format(agent.id))
+        #print(agent.__hash__())
         self.agents[agent] = available[0]
         self.paintSlots[available[0]] = True
         #self.paintStart(agent.point,self.colors[self.agents[agent]])
@@ -40,7 +42,9 @@ class AgentPainter(object):
     def unregister(self,agent):
         if self.agents.has_key(agent):
             self.paintSlots[self.agents[agent]] = False
+            #print('unregistring {0}'.format(agent.id))
             del self.agents[agent]
+
         else:
             sys.stderr.write('Warning, unknown agent\n')
         
@@ -87,7 +91,8 @@ class AgentPainter(object):
             c1 = nu.minimum(255,c+50)
             c2 = nu.maximum(0,c-100)
             M,N = self.img.shape[1:]
-            rng = nu.arange(rmin,rmax)
+            #rng = nu.arange(rmin,rmax)
+            rng = nu.arange(rmin,rmax,.95)
             xy = nu.round(nu.column_stack((rng*nu.sin(agent.getAngle()*nu.pi)+agent.getDrawMean()[0],
                                            rng*nu.cos(agent.getAngle()*nu.pi)+agent.getDrawMean()[1])))
             if rotator:
@@ -100,10 +105,13 @@ class AgentPainter(object):
                 self.paintRav(xy,c2,alpha)
 
             # first point
-            fPoint = agent.getDrawPoints()[0].reshape((1,2))
-            if rotator:
-                fPoint = rotator.derotate(fPoint)[0,:]
-            self.paintRect(fPoint[0],fPoint[0],fPoint[1],fPoint[1],c)
+            if agent.getDrawPoints().shape[0] > 0:
+                fPoint = agent.getDrawPoints()[0].reshape((1,2))
+                if rotator:
+                    fPoint = rotator.derotate(fPoint)[0,:]
+                else:
+                    fPoint = fPoint[0,:]
+                self.paintRect(fPoint[0],fPoint[0],fPoint[1],fPoint[1],c)
 
             drp = agent.getDrawPoints()
             if rotator:
@@ -201,9 +209,12 @@ class Agent(object):
                     age=self.age,pts=self.points.shape[0],score=self.score,mean=self.mean)
 
     def mergeable(self,other):
-        e0 = getError(other.points-self.mean,self.getAngle())
-        e1 = getError(self.points-other.mean,other.getAngle())
-        return (e0+e1)/2.0
+        if other.age > 1 and self.age > 1:
+            e0 = getError(other.points-self.mean,self.getAngle())
+            e1 = getError(self.points-other.mean,other.getAngle())
+            return (e0+e1)/2.0
+        else:
+            return self.maxError+1
     
     def getLineWidth(self):
         return self.lw
@@ -239,10 +250,10 @@ class Agent(object):
         #self.scorehist = self.scorehist+other.scorehist
         self.age = max(self.age,other.age)
         self.score = self.score+other.score
-        cp = os.path.commonprefix([self.id,other.id]).split('_')
-        self.offspring = 0
-        if len(cp) > 1:
-            self.id = '_'.join(cp[:-1])
+        #cp = os.path.commonprefix([self.id,other.id]).split('_')
+        #self.offspring = 0
+        #if len(cp) > 1:
+        #    self.id = '_'.join(cp[:-1])
             
     def tick(self,immortal=False):
         self.offspring = 0
@@ -316,10 +327,11 @@ class Agent(object):
             #print(self)
             #print('lw',lw,self.getLineWidth(),self.getLineWidthStd())
             #print('prepare point add',xy0,xy1)
-            if nu.sign(error0) != nu.sign(error1):
+            acceptableWidth = lw <= self.getLineWidth() + max(1,self.getLineWidthStd())
+            if nu.sign(error0) != nu.sign(error1) and not acceptableWidth:
                 xy = self.getIntersection(xy0,xy1)
             else:
-                if lw <= self.getLineWidth() + max(1,self.getLineWidthStd()):
+                if acceptableWidth: #lw <= self.getLineWidth() + max(1,self.getLineWidthStd()):
                     # it's most probably a pure segment of the line, store the mean
                     xy = (xy0+xy1)/2.0
                 else:
