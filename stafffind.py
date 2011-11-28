@@ -7,7 +7,7 @@ import numpy as nu
 from imageUtil import writeImageData, getPattern, findValleys, smooth, normalize
 from utilities import argpartition, partition, makeColors
 from agent import Agent, AgentPainter, makeAgentClass
-
+from dtw import dtw
 
 def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False,maxWidth=nu.inf):
     data = nu.nonzero(v)[0]
@@ -433,6 +433,11 @@ class System(object):
     def getStaffLineWidth(self):
         return nu.mean([a.getLineWidth() for a in self.staffs[0].staffLineAgents]+
                        [a.getLineWidth() for a in self.staffs[1].staffLineAgents])
+
+    @getter
+    def getStaffLineDistance(self):
+        return (self.staffs[0].getStaffLineDistance()+self.staffs[1].getStaffLineDistance())/2.0
+
     def getBarLines(self):
         agents = []
         defBarAngle = .5 #(self.getStaffAngle()+.5)%1
@@ -440,7 +445,7 @@ class System(object):
         #print('default bar angle for this system',defBarAngle)
         #assert defBarAngle >= 0
         BarAgent = makeAgentClass(targetAngle=defBarAngle,
-                                  maxAngleDev=3/180.,
+                                  maxAngleDev=4/180.,
                                   maxError=3,
                                   minScore=-5,
                                   offset=0)
@@ -489,7 +494,7 @@ class System(object):
         meanAge = nu.mean([a.age for a in bAgents])
         for j,a in enumerate(agents):
             print('{0} {1}'.format(j,a))
-        agents = [a for a in agents if a.score > .3*meanScore and a.age > .3*meanAge]
+        agents = [a for a in agents if a.score > .4*meanScore and a.age > .4*meanAge]
         print('chose {0} agents'.format(len(agents)))
         draw = False
         if draw:
@@ -501,11 +506,129 @@ class System(object):
             f0,ext = os.path.splitext(fn)
             print(f0,ext)
             ap.writeImage(f0+'-sys{0:04d}.png'.format(int(self.getLowerLeft()[0])))
-        #for a in agents:
-        #    self.assessBarLine(a)
+        agents.sort(key=lambda x: x.getDrawMean()[1])
+        for j,a in enumerate(agents):
+            self.barlineTest(a,self.getTop(),j)
+            #self.assessBarLine(a)
         #agents = self.selectBarLines(agents)
         return agents
 
+    def getStaffLinesAroundBar(self,cimg,w,sysHeight,staffLineWidth,staffDistance):
+        
+        #template = nu.array((-1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,-1,-1,-1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,-1))
+        #stafftemp = [-1,1,-1,1,-1,1,-1,1,-1,1,-1]
+        d = .5
+        stafftemp = (int(staffLineWidth)*[1]+int(staffDistance-staffLineWidth)*[-1])*4+int(staffLineWidth)*[1]
+        w1 = [-d]*int(sysHeight-8*staffDistance)
+        margin = [-d]*int((cimg.shape[0]-sysHeight)/2.)
+        #template = nu.array([-.1]*2+stafftemp+[-.1]*2*len(stafftemp)+stafftemp+[-.1]*2)
+        template = nu.array(margin+stafftemp+w1+stafftemp+margin)
+        stafflineIdx = nu.where(template==1)[0]
+        hsum = ((nu.mean(cimg[:,0:int(.25*w)],1)+nu.mean(cimg[:,int(.75*w):],1))/2.0-127.0)/127.0
+        l1 = float(len(template))
+        l2 = float(len(hsum))
+        print(l1,l2)
+        def c(x,y,i,j):
+            return (x[i]-y[j])**2+10*nu.abs(i/l1-j/l2)**2-.9*max(0,y[j])*(x[i]-y[j])**2
+            #return (x[i]-y[j])**2+10*nu.abs(i/l1-j/l2)
+            #return -x[i]*y[j]+(float(i)/len(x)-float(j)/len(y))
+        apath = nu.column_stack((nu.linspace(0,l1-1,int(max(l1,l2))),nu.linspace(0,l2-1,int(max(l1,l2))))).astype(nu.int)
+        path,tcost = dtw(template,hsum,K=int(.2*l1),L=int(.2*l2),cost=c,returnCost=True,apath=apath)
+        result = []
+        for i in stafflineIdx:
+            x = path[path[:,0] == i,1]
+            result.append((x[0],x[-1]))
+        return result
+        
+    def barlineTest(self,agent,s,i):
+        system0Top = self.getRotator().rotate(self.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
+        system0Bot = self.getRotator().rotate(self.staffs[0].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
+        system1Top = self.getRotator().rotate(self.staffs[1].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
+        system1Bot = self.getRotator().rotate(self.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
+        w = agent.getLineWidth()*4
+        whalf = int(w/2.)
+        sysHeight = (system1Bot-system0Top)
+        h = sysHeight*1.2
+        hhalf = int(h/2.)
+        yTop = agent.getDrawMean()[1]+(system0Top-agent.getDrawMean()[0])*nu.cos(nu.pi*agent.getAngle())
+        yBot = agent.getDrawMean()[1]+(system1Bot-agent.getDrawMean()[0])*nu.cos(nu.pi*agent.getAngle())
+        print(agent)
+        middle = (nu.array((system0Top,yTop))+nu.array((system1Bot,yBot)))/2.0
+        r = Rotator(agent.getAngle()-.5,middle,nu.array((0,0.)))
+        xx,yy = nu.mgrid[-hhalf:hhalf,-whalf:whalf]
+        print(middle,whalf,hhalf)
+        xxr,yyr = r.derotate(xx,yy)
+        minx,maxx,miny,maxy = nu.min(xxr),nu.max(xxr),nu.min(yyr),nu.max(yyr)
+        M,N = self.getCorrectedImgSegment().shape
+
+        if minx < 0 or miny < 0 or maxx >= M or maxy >= N:
+            return False
+
+        cimg = getAntiAliasedImg(self.getCorrectedImgSegment(),xxr,yyr)
+        kRange = .1
+        vCorrection = self.findVCenterOfBarline(cimg,kRange)-hhalf
+        cimg = getAntiAliasedImg(self.getCorrectedImgSegment(),xxr+vCorrection,yyr)
+
+        ap = AgentPainter(cimg)
+        ap.paintVLine(int(1.5*agent.getLineWidth()),step=2,color=(255,0,0))
+        ap.paintVLine(int(2.5*agent.getLineWidth()),step=2,color=(255,0,0))
+        #print('lw',self.staffs[0].staffLineAgents[0].getLineWidth())
+        #hhll = self.getStaffLinesAroundBar(cimg,w,sysHeight,self.getStaffLineWidth(),self.getStaffLineDistance())
+
+        sld = self.staffs[0].getStaffLineDistance()
+        color = (200,0,200)
+        krng = range(-int(nu.ceil(.5*sld)),int(nu.ceil(.5*sld)))
+        ksums = []
+        #slw = self.staffs[0].staffLineAgents[j].getLineWidth()
+        slw = self.getStaffLineWidth()
+        for k in krng:
+            ksum = 0
+            for j in range(5):
+                hi = int(hhalf+1-(system1Bot-system0Top)/2.0+j*sld-nu.ceil(.5*slw))
+                lo = int(hhalf+1-(system1Bot-system0Top)/2.0+j*sld+nu.ceil(.5*slw))
+                ksum += nu.sum(cimg[hi+k:lo+k,:])
+            ksums.append(ksum)
+        f = krng[nu.argmax(ksums)]
+        for j in range(5):
+            #slw = self.staffs[0].staffLineAgents[j].getLineWidth()
+            hi = int(hhalf+1-(system1Bot-system0Top)/2.0+j*sld-nu.ceil(.5*slw))+f
+            lo = int(hhalf+1-(system1Bot-system0Top)/2.0+j*sld+nu.ceil(.5*slw))+f
+            ap.paintHLine(hi,step=2,alpha=.8,color=color)
+            ap.paintHLine(lo,step=2,alpha=.8,color=color)
+
+        sld = self.staffs[1].getStaffLineDistance()
+        krng = range(-int(nu.ceil(.5*sld)),int(nu.ceil(.5*sld)))
+        ksums = []
+        for k in krng:
+            ksum = 0
+            for j in range(5):
+                #slw = self.staffs[1].staffLineAgents[j].getLineWidth()
+                hi = int(hhalf+1+(system1Bot-system0Top)/2.0-(4-j)*sld-nu.ceil(.5*slw))
+                lo = int(hhalf+1+(system1Bot-system0Top)/2.0-(4-j)*sld+nu.ceil(.5*slw))
+                ksum += nu.sum(cimg[hi+k:lo+k,:])
+            ksums.append(ksum)
+        f = krng[nu.argmax(ksums)]
+
+        for j in range(5):
+            #slw = self.staffs[1].staffLineAgents[j].getLineWidth()
+            hi = int(hhalf+1+(system1Bot-system0Top)/2.0-(4-j)*sld-nu.ceil(.5*slw))+f
+            lo = int(hhalf+1+(system1Bot-system0Top)/2.0-(4-j)*sld+nu.ceil(.5*slw))+f
+            ap.paintHLine(hi,step=2,alpha=.8,color=color)
+            ap.paintHLine(lo,step=2,alpha=.8,color=color)
+
+        ap.writeImage('bar-{0:04d}-{1:03d}.png'.format(s,i))
+
+    def findVCenterOfBarline(self,bimg,kRange):
+        N,M = bimg.shape
+        kMin = int(N*(1-kRange)/2.0)
+        kMax = int(N*(1+kRange)/2.0)
+        scores = []
+        krng = range(kMin,kMax+1)
+        for k in krng:
+            w = min(k,N-k-1)
+            scores.append(nu.sum(((bimg[k-w:k,:]-127)*(bimg[k+w:k:-1,:]-127)))/w)
+        return krng[nu.argmin(scores)]
+        
     def selectBarLines(self,agents):
         scores = nu.array([self.assessBarLine(a) for a in agents])
         m = nu.median(scores,0)
@@ -585,6 +708,8 @@ class System(object):
         xx,yy = nu.mgrid[0:self.getSystemHeight(),-halfSystemWidth:halfSystemWidth]
         yy += self.getLowerMidLocal()[1]
         xxr,yyr = r.derotate(xx,yy)
+        if True:
+            getAntiAliasedImg(self.scrImage.getImg(),xxr,yyr)
 
         xf = nu.floor(xxr).astype(nu.int)
         xc = nu.ceil(xxr).astype(nu.int)
@@ -601,14 +726,22 @@ class System(object):
                 (wxc+wyf)*self.scrImage.getImg()[xc,yf] + \
                 (wxc+wyc)*self.scrImage.getImg()[xc,yc])/4.0).astype(nu.uint8)
         
-        #ap = AgentPainter(cimg)
-        #ag = self.staffs[0].staffLineAgents[3]
-        #x,y = r.rotate(ag.points[:,0]+ag.offset,ag.points[:,1])
-        #ag.points = nu.column_stack((x-ag.offset,y))
-        #ap.register(ag)
-        #ap.drawAgentGood(ag)
-        #ap.writeImage('tst.png')
         return cimg
+
+
+def getAntiAliasedImg(img,xx,yy):
+        xf = nu.floor(xx).astype(nu.int)
+        xc = nu.ceil(xx).astype(nu.int)
+        yf = nu.floor(yy).astype(nu.int)
+        yc = nu.ceil(yy).astype(nu.int)
+        wxc = xx%1
+        wxf = 1-wxc
+        wyc = yy%1
+        wyf = 1-wyc
+        return (((wxf+wyf)*img[xf,yf] + 
+                 (wxf+wyc)*img[xf,yc] + 
+                 (wxc+wyf)*img[xc,yf] + 
+                 (wxc+wyc)*img[xc,yc])/4.0).astype(nu.uint8)
 
 class Rotator(object):
     def __init__(self,theta,og,ol):
