@@ -7,165 +7,109 @@ from imageUtil import getImageData, writeImageData, makeMask, normalize, jitterI
 from utilities import argpartition, partition, makeColors
 from copy import deepcopy
 
-class AgentPainter(object):
-    def __init__(self,img):
-        self.img = nu.array((255-img,255-img,255-img))
-        self.imgOrig = nu.array((255-img,255-img,255-img))
-        self.maxAgents = 300
-        self.colors = makeColors(self.maxAgents)
-        self.paintSlots = nu.zeros(self.maxAgents,nu.bool)
-        self.agents = {}
-
-    def writeImage(self,fn):
-        #print(nu.min(img),nu.max(img))
-        self.img = self.img.astype(nu.uint8)
-        fn = os.path.join('/tmp',os.path.splitext(os.path.basename(fn))[0]+'.png')
-        print(fn)
-        writeImageData(fn,self.img.shape[1:],self.img[0,:,:],self.img[1,:,:],self.img[2,:,:])
-
-    def isRegistered(self,agent):
-        return self.agents.has_key(agent)
+def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False,maxWidth=nu.inf):
+    data = nu.nonzero(v)[0]
+    if len(data) > 1:
+        candidates = [tuple(x) if len(x)==1 else (x[0],x[-1]) for x in 
+                      nu.split(data,nu.nonzero(nu.diff(data)>1)[0]+1)]
+    elif len(data) == 1:
+        candidates = [tuple(data)]
+    else:
+        return agents
+    #print(candidates)
+    if vert is not None:
         
-    def register(self,agent):
-        if self.isRegistered(agent):
-            return True
-        available = nu.where(self.paintSlots==0)[0]
-        if len(available) < 1:
-            print('no paint slots available')
-            return False
-        #print('registring {0}'.format(agent.id))
-        #print(agent.__hash__())
-        self.agents[agent] = available[0]
-        self.paintSlots[available[0]] = True
-        #self.paintStart(agent.point,self.colors[self.agents[agent]])
+        candidates = [[nu.array([vert,horz]) for horz in horzz] for horzz in candidates]
+    elif horz is not None:
+        candidates = [[nu.array([vert,horz]) for vert in vertz] for vertz in candidates]
+    else:
+        print('error, need to specify vert or horz')
 
-    def unregister(self,agent):
-        if self.agents.has_key(agent):
-            self.paintSlots[self.agents[agent]] = False
-            #print('unregistring {0}'.format(agent.id))
-            del self.agents[agent]
+    unadopted = []
+    bids = None
+    newagents =[]
+    if len(agents) == 0:
+        unadopted.extend(range(len(candidates)))
+    else:
+        #print('agents, candidates',len(agents),len(candidates))
+        bids = nu.zeros((len(candidates),len(agents)))
+        for i,c in enumerate(candidates):
+            bids[i,:] = nu.array([nu.abs(a.bid(*c)) for a in agents])
+        sortedBets = nu.argsort(bids,1)
+        if False: #vert == 326:
+            for j,a in enumerate(agents):
+                print('{0} {1}'.format(j,a))
+            print('candidates',candidates)
+            print(sortedBets)
+            print(bids[-1,sortedBets[-1,:]])
+            sys.exit()
+        cidx = nu.argsort(sortedBets[:,0])
+        adopters = set([])
+        for i in cidx:
+            bestBidder = sortedBets[i,0]
+            bestBet = bids[i,bestBidder]
+            #print('sortedBets')
+            #print(sortedBets[i,:])
+            #print(bids[i,sortedBets[i,:]])
+            bidderHas = bestBidder in adopters
+            if bestBet <= agents[bestBidder].maxError and not bidderHas:
+                # nu.sum((candidates[i][0]-candidates[i][-1])**2)**.5 < maxWidth and 
+                #print('{0} goes to {1}'.format(candidates[i][0][1],agents[bestBidder].id))
+                agents[bestBidder].award(*candidates[i])
+                adopters.add(bestBidder)
+                newagents.append(agents[bestBidder])
+            else:
+                #print('{0} unadopted, best {1}, available: {2}'.format(candidates[i][0][1],
+                #                                                       agents[bestBidder].id,bidderHas))
+                unadopted.append(i)
+        newagents.extend([agents[x] for x in set(range(len(agents))).difference(adopters)])
+    if not fixAgents:
+        for i in unadopted:
+            if len(candidates[i]) >1 and (candidates[i][-1][0]-candidates[i][0][0]) <= M/50.:
+                # only add an agent if we are on a small section
+                newagent = AgentType(nu.mean(nu.array(candidates[i]),0))
+                newagents.append(newagent)
+    
+    #return [a for a in newagents if a.tick(fixAgents)]
+    r = partition(lambda x: x.tick(fixAgents),newagents)
+    return r.get(True,[]),r.get(False,[])
 
-        else:
-            sys.stderr.write('Warning, unknown agent\n')
-        
-    def reset(self):
-        self.img = self.imgOrig.copy()
-
-    def drawAgentGood(self,agent,rmin=-100,rmax=100):
-        if self.agents.has_key(agent):
-            #print('drawing')
-            #print(agent)
-            c = self.colors[self.agents[agent]]
-            c1 = nu.minimum(255,c+50)
-            c2 = nu.maximum(0,c-100)
-            M,N = self.img.shape[1:]
-            rng = nu.arange(rmin,rmax)
-            xy = nu.round(nu.column_stack((rng*nu.sin(agent.getAngle()*nu.pi)+agent.getDrawMean()[0],
-                                           rng*nu.cos(agent.getAngle()*nu.pi)+agent.getDrawMean()[1])))
-            idx = nu.logical_and(nu.logical_and(xy[:,0]>=0,xy[:,0]<M),
-                                 nu.logical_and(xy[:,1]>=0,xy[:,1]<N))
-            alpha = min(.8,max(.1,.5+float(agent.score)/max(1,agent.age)))
-            xy = xy[idx,:]
-            if xy.shape[0] > 0:
-                self.paintRav(xy,c2,alpha)
-            #for r in range(rmin,rmax):
-            #    x = r*nu.sin(agent.getAngle()*nu.pi)+agent.getDrawMean()[0]
-            #    y = r*nu.cos(agent.getAngle()*nu.pi)+agent.getDrawMean()[1]
-            #    #print(r,agent.getAngle(),agent.getDrawMean(),x,y)
-            #    #print(x,y)
-            #    if 0 <= x < M and 0 <= y < N:
-            #        self.paint(nu.array((x,y)),c2,alpha)
-
-            self.paintRect(agent.getDrawPoints()[0][0],agent.getDrawPoints()[0][0],
-                           agent.getDrawPoints()[0][1],agent.getDrawPoints()[0][1],c)
-            #self.paintRect(agent.getDrawMean()[0]+2,agent.getDrawMean()[0]-2,
-            #               agent.getDrawMean()[1]+2,agent.getDrawMean()[1]-2,c)
-
-            self.paintRav(agent.getDrawPoints(),c1)
-            #for p in agent.getDrawPoints():
-            #    self.paint(p,c1)
-
-    def drawAgent(self,agent,rmin=-100,rmax=100,rotator=None):
-        if self.agents.has_key(agent):
-            c = self.colors[self.agents[agent]]
-            c1 = nu.minimum(255,c+50)
-            c2 = nu.maximum(0,c-100)
-            M,N = self.img.shape[1:]
-            #rng = nu.arange(rmin,rmax)
-            rng = nu.arange(rmin,rmax,.95)
-            xy = nu.round(nu.column_stack((rng*nu.sin(agent.getAngle()*nu.pi)+agent.getDrawMean()[0],
-                                           rng*nu.cos(agent.getAngle()*nu.pi)+agent.getDrawMean()[1])))
-            if rotator:
-                xy = rotator.derotate(xy)
-            idx = nu.logical_and(nu.logical_and(xy[:,0]>=0,xy[:,0]<M),
-                                 nu.logical_and(xy[:,1]>=0,xy[:,1]<N))
-            alpha = min(.8,max(.1,.5+float(agent.score)/max(1,agent.age)))
-            xy = xy[idx,:].astype(nu.int)
-            if xy.shape[0] > 0:
-                self.paintRav(xy,c2,alpha)
-
-            # first point
-            if agent.getDrawPoints().shape[0] > 0:
-                fPoint = agent.getDrawPoints()[0].reshape((1,2))
-                if rotator:
-                    fPoint = rotator.derotate(fPoint)[0,:]
+def mergeAgents(agents):
+    if len(agents) < 3:
+        return agents,[]
+    newagents = []
+    N = len(agents)
+    pdist = []
+    for i in range(N-1):
+        for j in range(i+1,N):
+            if agents[i].points.shape[0] < 2 or agents[j].points.shape[0] < 2:
+                pdist.append(agents[i].maxError+1)
+            else:
+                #cAngle = (nu.arctan2(*(agents[i].mean-agents[j].mean))%nu.pi)/nu.pi
+                cAngle = ((nu.arctan2(*(agents[i].mean-agents[j].mean))/nu.pi)+1)%1
+                # fast check: are means in positions likely for merge?
+                if True: #((cAngle-agents[i].targetAngle+.5)%1-.5) < agents[i].maxAngleDev:
+                #if nu.abs(cAngle-agents[i].targetAngle) < agents[i].maxAngleDev:
+                    # yes, do further check
+                    pdist.append(agents[i].mergeable(agents[j]))
                 else:
-                    fPoint = fPoint[0,:]
-                self.paintRect(fPoint[0],fPoint[0],fPoint[1],fPoint[1],c)
-
-            drp = agent.getDrawPoints()
-            if rotator:
-                drp = rotator.derotate(drp)
-            self.paintRav(drp,c1)
-
-    def paintRav(self,coords,color,alpha=1):
-        idx = (self.img.shape[2]*nu.round(coords[:,0])+nu.round(coords[:,1])).astype(nu.int64)
-        #print(idx)
-        #self.img[0,:,:].flat[idx] = (1-alpha)*self.img[0,:,:].flat[idx]+alpha*color[0]
-        #self.img[1,:,:].flat[idx] = (1-alpha)*self.img[1,:,:].flat[idx]+alpha*color[1]
-        #self.img[2,:,:].flat[idx] = (1-alpha)*self.img[2,:,:].flat[idx]+alpha*color[2]
-        #self.img[0,:,:].flat[idx] *= (1-alpha)
-        #self.img[1,:,:].flat[idx] *= (1-alpha)
-        #self.img[2,:,:].flat[idx] *= (1-alpha)
-        self.img[:,:,:].flat[idx] *= (1-alpha)
-        self.img[0,:,:].flat[idx] += alpha*color[0]
-        self.img[1,:,:].flat[idx] += alpha*color[1]
-        self.img[2,:,:].flat[idx] += alpha*color[2]
-        #self.img[:,int(coord[0]),int(coord[1])] = (1-alpha)*self.img[:,int(coord[0]),int(coord[1])]+alpha*color
-
-    def paint(self,coord,color,alpha=1):
-        #print('point',coord,img.shape)
-        self.img[:,int(coord[0]),int(coord[1])] = (1-alpha)*self.img[:,int(coord[0]),int(coord[1])]+alpha*color
-
-    def paintVLine(self,y,alpha=.5,step=1,color=(255,255,255)):
-        if 0 <= y < self.img.shape[2]:
-            self.img[:,::step,y] *= (1-alpha)
-            self.img[0,::step,y] += alpha*color[0]
-            self.img[1,::step,y] += alpha*color[1]
-            self.img[2,::step,y] += alpha*color[2]
-    def paintHLine(self,x,alpha=.5,step=1,color=(255,255,255)):
-        if 0 <= x < self.img.shape[1]:
-            #self.img[:,x,::step] = (1-alpha)*self.img[:,x,::step]
-            self.img[:,x,::step] *= (1-alpha)
-            self.img[0,x,::step] += alpha*color[0]
-            self.img[1,x,::step] += alpha*color[1]
-            self.img[2,x,::step] += alpha*color[2]
-
-
-    def paintRect(self,xmin,xmax,ymin,ymax,color,alpha=.5):
-        rectSize = 10
-        N,M = self.img.shape[1:]
-        t = int(max(0,xmin-nu.floor(rectSize/2.)))
-        b = int(min(N-1,xmax+nu.floor(rectSize/2.)))
-        l = int(max(0,ymin-nu.floor(rectSize/2.)))
-        r = int(min(M-1,ymax+nu.floor(rectSize/2.)))
-        #self.img[:,:,int(ymin)] = (1-alpha)*self.img[:,:,int(ymin)]+alpha*0
-        #self.img[:,int(xmin),:] = (1-alpha)*self.img[:,int(xmin),:]+alpha*0
-        for i,c in enumerate(color):
-            self.img[i,t:b,l] = c
-            self.img[i,t:b,r] = c
-            self.img[i,t,l:r] = c
-            self.img[i,b,l:r+1] = c
+                    # no, exclude
+                    pdist.append(agents[i].maxError+1)
+    pdist = nu.array(pdist)
+    l = cluster.hierarchy.complete(pdist)
+    c = cluster.hierarchy.fcluster(l,agents[0].maxError,criterion='distance')
+    idict = argpartition(lambda x: x[0], nu.column_stack((c,nu.arange(len(c)))))
+    died = []
+    for v in idict.values():
+        if len(v) == 1:
+            newagents.append(agents[v[0]])
+        else:
+            a = agents[v[0]]
+            for i in v[1:]:
+                a.merge(agents[i])
+            newagents.append(a)
+            died.extend(v[1:])
+    return newagents,died
 
 def tls(X):
     """total least squares for 2 dimensions
@@ -387,22 +331,166 @@ class Agent(object):
         self.adopted = True
         self.error,self.angleDev,self.mean,self.lw,self.points = self.preparePointAdd(xy0,xy1=xy1)
 
+class AgentPainter(object):
+    def __init__(self,img):
+        self.img = nu.array((255-img,255-img,255-img))
+        self.imgOrig = nu.array((255-img,255-img,255-img))
+        self.maxAgents = 300
+        self.colors = makeColors(self.maxAgents)
+        self.paintSlots = nu.zeros(self.maxAgents,nu.bool)
+        self.agents = {}
 
-class BarLineAgent(Agent):
-    targetAngle = .32 # in rad/(2*pi), for example .5 is vertical
-    # maxError should depend on imageSize
-    # good values (empirically established):
-    # maxError=5 for images of approx 826x1169; seems to work also for images of 2550x3510
-    # larger resolutions may need a higher value of maxError
-    maxError = 2 # mean perpendicular distance of points to line (in pixels)
-    maxAngleDev = 90/180. # 
-    minScore = -2
+    def writeImage(self,fn):
+        #print(nu.min(img),nu.max(img))
+        self.img = self.img.astype(nu.uint8)
+        fn = os.path.join('/tmp',os.path.splitext(os.path.basename(fn))[0]+'.png')
+        print(fn)
+        writeImageData(fn,self.img.shape[1:],self.img[0,:,:],self.img[1,:,:],self.img[2,:,:])
 
-class StaffLineAgent(Agent):
-    targetAngle = 0 
-    maxError = 5
-    maxAngleDev = 2/180. # radians/pi
-    minScore = -1
+    def isRegistered(self,agent):
+        return self.agents.has_key(agent)
+        
+    def register(self,agent):
+        if self.isRegistered(agent):
+            return True
+        available = nu.where(self.paintSlots==0)[0]
+        if len(available) < 1:
+            print('no paint slots available')
+            return False
+        #print('registring {0}'.format(agent.id))
+        #print(agent.__hash__())
+        self.agents[agent] = available[0]
+        self.paintSlots[available[0]] = True
+        #self.paintStart(agent.point,self.colors[self.agents[agent]])
+
+    def unregister(self,agent):
+        if self.agents.has_key(agent):
+            self.paintSlots[self.agents[agent]] = False
+            #print('unregistring {0}'.format(agent.id))
+            del self.agents[agent]
+
+        else:
+            sys.stderr.write('Warning, unknown agent\n')
+        
+    def reset(self):
+        self.img = self.imgOrig.copy()
+
+    def drawAgentGood(self,agent,rmin=-100,rmax=100):
+        if self.agents.has_key(agent):
+            #print('drawing')
+            #print(agent)
+            c = self.colors[self.agents[agent]]
+            c1 = nu.minimum(255,c+50)
+            c2 = nu.maximum(0,c-100)
+            M,N = self.img.shape[1:]
+            rng = nu.arange(rmin,rmax)
+            xy = nu.round(nu.column_stack((rng*nu.sin(agent.getAngle()*nu.pi)+agent.getDrawMean()[0],
+                                           rng*nu.cos(agent.getAngle()*nu.pi)+agent.getDrawMean()[1])))
+            idx = nu.logical_and(nu.logical_and(xy[:,0]>=0,xy[:,0]<M),
+                                 nu.logical_and(xy[:,1]>=0,xy[:,1]<N))
+            alpha = min(.8,max(.1,.5+float(agent.score)/max(1,agent.age)))
+            xy = xy[idx,:]
+            if xy.shape[0] > 0:
+                self.paintRav(xy,c2,alpha)
+            #for r in range(rmin,rmax):
+            #    x = r*nu.sin(agent.getAngle()*nu.pi)+agent.getDrawMean()[0]
+            #    y = r*nu.cos(agent.getAngle()*nu.pi)+agent.getDrawMean()[1]
+            #    #print(r,agent.getAngle(),agent.getDrawMean(),x,y)
+            #    #print(x,y)
+            #    if 0 <= x < M and 0 <= y < N:
+            #        self.paint(nu.array((x,y)),c2,alpha)
+
+            self.paintRect(agent.getDrawPoints()[0][0],agent.getDrawPoints()[0][0],
+                           agent.getDrawPoints()[0][1],agent.getDrawPoints()[0][1],c)
+            #self.paintRect(agent.getDrawMean()[0]+2,agent.getDrawMean()[0]-2,
+            #               agent.getDrawMean()[1]+2,agent.getDrawMean()[1]-2,c)
+
+            self.paintRav(agent.getDrawPoints(),c1)
+            #for p in agent.getDrawPoints():
+            #    self.paint(p,c1)
+
+    def drawAgent(self,agent,rmin=-100,rmax=100,rotator=None):
+        if self.agents.has_key(agent):
+            c = self.colors[self.agents[agent]]
+            c1 = nu.minimum(255,c+50)
+            c2 = nu.maximum(0,c-100)
+            M,N = self.img.shape[1:]
+            #rng = nu.arange(rmin,rmax)
+            rng = nu.arange(rmin,rmax,.95)
+            xy = nu.round(nu.column_stack((rng*nu.sin(agent.getAngle()*nu.pi)+agent.getDrawMean()[0],
+                                           rng*nu.cos(agent.getAngle()*nu.pi)+agent.getDrawMean()[1])))
+            if rotator:
+                xy = rotator.derotate(xy)
+            idx = nu.logical_and(nu.logical_and(xy[:,0]>=0,xy[:,0]<M),
+                                 nu.logical_and(xy[:,1]>=0,xy[:,1]<N))
+            alpha = min(.8,max(.1,.5+float(agent.score)/max(1,agent.age)))
+            xy = xy[idx,:].astype(nu.int)
+            if xy.shape[0] > 0:
+                self.paintRav(xy,c2,alpha)
+
+            # first point
+            if agent.getDrawPoints().shape[0] > 0:
+                fPoint = agent.getDrawPoints()[0].reshape((1,2))
+                if rotator:
+                    fPoint = rotator.derotate(fPoint)[0,:]
+                else:
+                    fPoint = fPoint[0,:]
+                self.paintRect(fPoint[0],fPoint[0],fPoint[1],fPoint[1],c)
+
+            drp = agent.getDrawPoints()
+            if rotator:
+                drp = rotator.derotate(drp)
+            self.paintRav(drp,c1)
+
+    def paintRav(self,coords,color,alpha=1):
+        idx = (self.img.shape[2]*nu.round(coords[:,0])+nu.round(coords[:,1])).astype(nu.int64)
+        #print(idx)
+        #self.img[0,:,:].flat[idx] = (1-alpha)*self.img[0,:,:].flat[idx]+alpha*color[0]
+        #self.img[1,:,:].flat[idx] = (1-alpha)*self.img[1,:,:].flat[idx]+alpha*color[1]
+        #self.img[2,:,:].flat[idx] = (1-alpha)*self.img[2,:,:].flat[idx]+alpha*color[2]
+        #self.img[0,:,:].flat[idx] *= (1-alpha)
+        #self.img[1,:,:].flat[idx] *= (1-alpha)
+        #self.img[2,:,:].flat[idx] *= (1-alpha)
+        self.img[:,:,:].flat[idx] *= (1-alpha)
+        self.img[0,:,:].flat[idx] += alpha*color[0]
+        self.img[1,:,:].flat[idx] += alpha*color[1]
+        self.img[2,:,:].flat[idx] += alpha*color[2]
+        #self.img[:,int(coord[0]),int(coord[1])] = (1-alpha)*self.img[:,int(coord[0]),int(coord[1])]+alpha*color
+
+    def paint(self,coord,color,alpha=1):
+        #print('point',coord,img.shape)
+        self.img[:,int(coord[0]),int(coord[1])] = (1-alpha)*self.img[:,int(coord[0]),int(coord[1])]+alpha*color
+
+    def paintVLine(self,y,alpha=.5,step=1,color=(255,255,255)):
+        if 0 <= y < self.img.shape[2]:
+            self.img[:,::step,y] *= (1-alpha)
+            self.img[0,::step,y] += alpha*color[0]
+            self.img[1,::step,y] += alpha*color[1]
+            self.img[2,::step,y] += alpha*color[2]
+    def paintHLine(self,x,alpha=.5,step=1,color=(255,255,255)):
+        if 0 <= x < self.img.shape[1]:
+            #self.img[:,x,::step] = (1-alpha)*self.img[:,x,::step]
+            self.img[:,x,::step] *= (1-alpha)
+            self.img[0,x,::step] += alpha*color[0]
+            self.img[1,x,::step] += alpha*color[1]
+            self.img[2,x,::step] += alpha*color[2]
+
+
+    def paintRect(self,xmin,xmax,ymin,ymax,color,alpha=.5):
+        rectSize = 10
+        N,M = self.img.shape[1:]
+        t = int(max(0,xmin-nu.floor(rectSize/2.)))
+        b = int(min(N-1,xmax+nu.floor(rectSize/2.)))
+        l = int(max(0,ymin-nu.floor(rectSize/2.)))
+        r = int(min(M-1,ymax+nu.floor(rectSize/2.)))
+        #self.img[:,:,int(ymin)] = (1-alpha)*self.img[:,:,int(ymin)]+alpha*0
+        #self.img[:,int(xmin),:] = (1-alpha)*self.img[:,int(xmin),:]+alpha*0
+        for i,c in enumerate(color):
+            self.img[i,t:b,l] = c
+            self.img[i,t:b,r] = c
+            self.img[i,t,l:r] = c
+            self.img[i,b,l:r+1] = c
+
 
 if __name__ == '__main__':
     StaffAgent = makeAgentClass(targetAngle=.005,
