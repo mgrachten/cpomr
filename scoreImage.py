@@ -79,7 +79,7 @@ class ScoreImage(object):
                 
         sysSegs = []
         for i,system in enumerate(self.getSystems()):
-            if True: #i == 1:
+            if i == 0:
                 sys.stdout.write('drawing system {0}\n'.format(i))
                 sys.stdout.flush()
                 system.draw()

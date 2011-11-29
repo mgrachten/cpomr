@@ -85,8 +85,7 @@ def mergeAgents(agents):
             if agents[i].points.shape[0] < 2 or agents[j].points.shape[0] < 2:
                 pdist.append(agents[i].maxError+1)
             else:
-                #cAngle = (nu.arctan2(*(agents[i].mean-agents[j].mean))%nu.pi)/nu.pi
-                cAngle = ((nu.arctan2(*(agents[i].mean-agents[j].mean))/nu.pi)+1)%1
+                #cAngle = ((nu.arctan2(*(agents[i].mean-agents[j].mean))/nu.pi)+1)%1
                 # fast check: are means in positions likely for merge?
                 if True: #((cAngle-agents[i].targetAngle+.5)%1-.5) < agents[i].maxAngleDev:
                 #if nu.abs(cAngle-agents[i].targetAngle) < agents[i].maxAngleDev:
@@ -160,14 +159,6 @@ class Agent(object):
         return 'Agent: {id}; angle: {angle:0.4f} ({ta:0.4f}+{ad:0.4f}); error: {err:0.3f} age: {age}; npts: {pts}; score: {score}; mean: {mean}'\
             .format(id=self.id,err=self.error,angle=self.getAngle(),ta=self.targetAngle,ad=self.angleDev,
                     age=self.age,pts=self.points.shape[0],score=self.score,mean=self.mean)
-
-    def mergeable(self,other):
-        if other.age > 1 and self.age > 1:
-            e0 = getError(other.points-self.mean,self.getAngle())
-            e1 = getError(self.points-other.mean,other.getAngle())
-            return (e0+e1)/2.0
-        else:
-            return self.maxError+1
     
     def getLineWidth(self):
         return self.lw
@@ -193,10 +184,23 @@ class Agent(object):
         x = self.mean[0]+(M/2.0-self.mean[1])*nu.tan(self.getAngle()*nu.pi)
         return x
 
+    def mergeable(self,other):
+        if other.age > 1 and self.age > 1:
+            e0 = getError(other.points-self.mean,self.getAngle())/float(other.points.shape[0])
+            e1 = getError(self.points-other.mean,other.getAngle())/float(self.points.shape[0])
+            #if 950 < self.mean[1] < 960 and 950 < other.mean[1] < 960:
+            #    print('mergeable:')
+            #    print(self)
+            #    print(other)
+            #    print((e0+e1)/2.0,self.maxError)
+            return (e0+e1)/2.0
+        else:
+            return self.maxError+1
+
     def merge(self,other):
         #self.points = nu.vstack((self.points,other.points))
         self.points = nu.array(tuple(set([tuple(y) for y in nu.vstack((self.points,other.points))])))
-        self.lineWidth = nu.append(self.lineWidth,other.lineWidth)
+        self.lineWidth = self.lineWidth+other.lineWidth
         self.mean = nu.mean(self.points,0)
         self.angleDev = ((tls(self.points-self.mean)-self.targetAngle)+.5)%1-.5
         self.error = getError(self.points-self.mean,self.getAngle())/self.points.shape[0]
@@ -329,7 +333,9 @@ class Agent(object):
 
     def award(self,xy0,xy1=None):
         self.adopted = True
-        self.error,self.angleDev,self.mean,self.lw,self.points = self.preparePointAdd(xy0,xy1=xy1)
+        
+        self.error,self.angleDev,self.mean,lw,self.points = self.preparePointAdd(xy0,xy1=xy1)
+        self._addLineWidth(lw)
 
 class AgentPainter(object):
     def __init__(self,img):
@@ -444,18 +450,10 @@ class AgentPainter(object):
 
     def paintRav(self,coords,color,alpha=1):
         idx = (self.img.shape[2]*nu.round(coords[:,0])+nu.round(coords[:,1])).astype(nu.int64)
-        #print(idx)
-        #self.img[0,:,:].flat[idx] = (1-alpha)*self.img[0,:,:].flat[idx]+alpha*color[0]
-        #self.img[1,:,:].flat[idx] = (1-alpha)*self.img[1,:,:].flat[idx]+alpha*color[1]
-        #self.img[2,:,:].flat[idx] = (1-alpha)*self.img[2,:,:].flat[idx]+alpha*color[2]
-        #self.img[0,:,:].flat[idx] *= (1-alpha)
-        #self.img[1,:,:].flat[idx] *= (1-alpha)
-        #self.img[2,:,:].flat[idx] *= (1-alpha)
-        self.img[:,:,:].flat[idx] *= (1-alpha)
-        self.img[0,:,:].flat[idx] += alpha*color[0]
-        self.img[1,:,:].flat[idx] += alpha*color[1]
-        self.img[2,:,:].flat[idx] += alpha*color[2]
-        #self.img[:,int(coord[0]),int(coord[1])] = (1-alpha)*self.img[:,int(coord[0]),int(coord[1])]+alpha*color
+        self.img[0,:,:].flat[idx] = nu.minimum(255,nu.maximum(0,(1-alpha)*self.img[0,:,:].flat[idx]+alpha*color[0])).astype(nu.uint8)
+        self.img[1,:,:].flat[idx] = nu.minimum(255,nu.maximum(0,(1-alpha)*self.img[1,:,:].flat[idx]+alpha*color[1])).astype(nu.uint8)
+        self.img[2,:,:].flat[idx] = nu.minimum(255,nu.maximum(0,(1-alpha)*self.img[2,:,:].flat[idx]+alpha*color[2])).astype(nu.uint8)
+
 
     def paint(self,coord,color,alpha=1):
         #print('point',coord,img.shape)
@@ -463,17 +461,15 @@ class AgentPainter(object):
 
     def paintVLine(self,y,alpha=.5,step=1,color=(255,255,255)):
         if 0 <= y < self.img.shape[2]:
-            self.img[:,::step,y] *= (1-alpha)
-            self.img[0,::step,y] += alpha*color[0]
-            self.img[1,::step,y] += alpha*color[1]
-            self.img[2,::step,y] += alpha*color[2]
-    def paintHLine(self,x,alpha=.5,step=1,color=(255,255,255)):
+            self.img[0,::step,y] = nu.minimum(255,nu.maximum(0,((1-alpha)*self.img[0,::step,y]+alpha*color[0]))).astype(nu.uint8)
+            self.img[1,::step,y] = nu.minimum(255,nu.maximum(0,((1-alpha)*self.img[1,::step,y]+alpha*color[1]))).astype(nu.uint8)
+            self.img[2,::step,y] = nu.minimum(255,nu.maximum(0,((1-alpha)*self.img[2,::step,y]+alpha*color[2]))).astype(nu.uint8)
+
+    def paintHLine(self,x,alpha=.5,step=1,color=(0,255,255)):
         if 0 <= x < self.img.shape[1]:
-            #self.img[:,x,::step] = (1-alpha)*self.img[:,x,::step]
-            self.img[:,x,::step] *= (1-alpha)
-            self.img[0,x,::step] += alpha*color[0]
-            self.img[1,x,::step] += alpha*color[1]
-            self.img[2,x,::step] += alpha*color[2]
+            self.img[0,x,::step] = nu.minimum(255,nu.maximum(0,((1-alpha)*self.img[0,x,::step]+alpha*color[0]))).astype(nu.uint8)
+            self.img[1,x,::step] = nu.minimum(255,nu.maximum(0,((1-alpha)*self.img[1,x,::step]+alpha*color[1]))).astype(nu.uint8)
+            self.img[2,x,::step] = nu.minimum(255,nu.maximum(0,((1-alpha)*self.img[2,x,::step]+alpha*color[2]))).astype(nu.uint8)
 
 
     def paintRect(self,xmin,xmax,ymin,ymax,color,alpha=.5):

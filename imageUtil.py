@@ -5,6 +5,20 @@ from PIL import Image
 import numpy as nu
 from scipy import signal
 
+def getAntiAliasedImg(img,xx,yy):
+        xf = nu.floor(xx).astype(nu.int)
+        xc = nu.ceil(xx).astype(nu.int)
+        yf = nu.floor(yy).astype(nu.int)
+        yc = nu.ceil(yy).astype(nu.int)
+        wxc = xx%1
+        wxf = 1-wxc
+        wyc = yy%1
+        wyf = 1-wyc
+        return (((wxf+wyf)*img[xf,yf] + 
+                 (wxf+wyc)*img[xf,yc] + 
+                 (wxc+wyf)*img[xc,yf] + 
+                 (wxc+wyc)*img[xc,yc])/4.0).astype(nu.uint8)
+
 def smooth(x,k):
     return nu.convolve(x,signal.hanning(k),'same')
 

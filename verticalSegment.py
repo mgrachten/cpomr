@@ -70,7 +70,7 @@ class VerticalSegment(object):
         cols = selectColumns(self.getVSums(),self.colGroups)[0]
         StaffAgent = makeAgentClass(targetAngle=defAngle,
                                     maxAngleDev=2/180.,
-                                    maxError=3,
+                                    maxError=1,
                                     minScore=-2,
                                     offset=self.top)
         draw = False
