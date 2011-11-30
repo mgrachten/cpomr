@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import pygtk,sys,os
+import pygtk,sys,os,string
 pygtk.require("2.0")
 import gtk
 import gtk.glade
@@ -20,6 +20,7 @@ class Annotator(object):
         self.xy = (0,0)
         self.nextImg()
         self.bars = [[] for x in range(len(self.files))]
+        self.labels = string.digits+string.ascii_letters
         #print(self.glade.get_object("image1"))
     def on_window1_destroy(self, *args):
         self.quit()
@@ -28,16 +29,24 @@ class Annotator(object):
     def on_bpress(self,window,event):
         if event.button == 1:
             self.addPoint((event.x,event.y))
-    def addPoint(self,p):
-        print('adding point',p,self.i)
-        self.bars[self.i].append(p)
+    #def addPoint(self,p):
+    #    print('adding point',p,self.i)
+    #    self.bars[self.i].append(p)
+    def addPoint(self,label,p):
+        v = [label]+list(p)
+        print('adding point',v,'to image',self.i)
+        self.bars[self.i].append(v)
     def savePoints(self,i):
         print('file',i)
         print('bars',[len(b) for b in self.bars])
         fn = os.path.join('/tmp/',os.path.splitext(os.path.basename(self.files[i]))[0]+'.txt')
         # useful when annotating scaled down images:
-        multiplier = 1.0
-        nu.savetxt(fn,(multiplier*nu.array(self.bars[i])).astype(nu.int),fmt='%d')
+        multiplier = 3.5
+        #nu.savetxt(fn,(multiplier*nu.array(self.bars[i])).astype(nu.int),fmt='%d')
+        with open(fn,'w') as f:
+            #(multiplier*nu.array(self.bars[i])).astype(nu.int),fmt='%d')
+            for x in self.bars[i]:
+                f.write('{0} {1} {2}\n'.format(*x))
         print('points saved to {0}'.format(fn))
     def on_motion(self,widget,event):
         self.xy = (event.x,event.y)
@@ -45,7 +54,8 @@ class Annotator(object):
         fn = os.path.join('/tmp/',os.path.splitext(os.path.basename(self.files[i]))[0]+'.txt')
         multiplier = 3.5
         print('file {0}'.format(fn))
-        print((multiplier*nu.array(self.bars[i])).astype(nu.int))
+        print(self.bars[i])
+        #print((multiplier*nu.array(self.bars[i])).astype(nu.int))
 
     def erasePoints(self,i):
         self.bars[i] = []
@@ -76,8 +86,9 @@ class Annotator(object):
                 self.removeLastPoint(self.i)
         else:
             if keyname == 'space':
-                self.addPoint(self.xy)
-                
+                pass#self.addPoint(self.xy)
+            if keyname in self.labels:
+                self.addPoint(keyname,self.xy)
     def prevImg(self):
         self.i -= 1
         if self.i < 0:

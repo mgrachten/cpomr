@@ -62,21 +62,54 @@ class Bar(object):
         #                          for i in range(len(staffTops)-1)]).flat[:]
         barStaff0 = nu.mean(nh[staffTops[0]:staffBots[4],h1:h2])
         barStaff1 = nu.mean(nh[staffTops[5]:staffBots[9],h1:h2])
-        print('sd',sd,range(staffTops[0]-sd,staffTops[0]))
+        interStaff = nu.mean(nh[staffBots[4]:staffTops[5],h1:h2])
         aboveBar = nu.mean(nh[staffTops[0]-sd:staffTops[0],h1:h2])
         belowBar = nu.mean(nh[staffBots[9]:staffBots[9]+sd,h1:h2])
-
+        if nu.isnan(aboveBar):
+            aboveBar = 255.
+        if nu.isnan(belowBar):
+            belowBar = 255.
+        staffLeft = nu.mean(nh[staffIdx,h0:h1])
+        staffRight = nu.mean(nh[staffIdx,h2:h3])
+        interStaffLeft = nu.mean(nh[interStaffIdx,h0:h1])
+        interStaffRight = nu.mean(nh[interStaffIdx,h2:h3])
         print('bar upper staff',barStaff0)
         print('bar lower staff',barStaff1)
         print('above bar',aboveBar)
         print('below bar',belowBar)
         #print('si',staffIdx)
         #print('isi',interStaffIdx)
-        print('mean staffline left from staffs',nu.mean(nh[staffIdx,h0:h1]))
-        print('mean staffline right from staffs',nu.mean(nh[staffIdx,h2:h3]))
-        print('mean interstaffline left from staffs',nu.mean(nh[interStaffIdx,h0:h1]))
-        print('mean interstaffline right from staffs',nu.mean(nh[interStaffIdx,h2:h3]))
+        print('inter staffline',interStaff)
+        print('mean staffline left from staffs',staffLeft)
+        print('mean staffline right from staffs',staffRight)
+        print('mean interstaffline left from staffs',interStaffLeft)
+        print('mean interstaffline right from staffs',interStaffRight)
+        return (barStaff0,barStaff1,aboveBar,belowBar,staffLeft,staffRight,interStaffLeft,interStaffRight,interStaff)
 
+    @getter
+    def getEstimates(self):
+        return nu.array((self.getBarEstimate(),self.getLeftMostBarEstimate(),self.getRightMostBarEstimate()))
+
+    @getter
+    def getBarEstimate(self):
+        f = self.getFeatures()
+        black = (f[0]+f[1]+f[5]+f[4])/(4.*255)
+        white = (f[2]+f[3]+f[6]+f[7])/(4.*255)
+        return black-white
+
+    @getter
+    def getLeftMostBarEstimate(self):
+        f = self.getFeatures()
+        white = f[4]/255.
+        return 1-white
+
+    @getter
+    def getRightMostBarEstimate(self):
+        f = self.getFeatures()
+        white = f[5]/255.
+        return 1-white
+        
+        
     @getter
     def getBarHCoords(self):
         b,e = (nu.array((-.5,.5))+self.widthFactor/2.0)*self.agent.getLineWidth()

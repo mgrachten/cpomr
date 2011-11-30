@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys
+import sys,os
 import numpy as nu
 from utilities import getter
 from imageUtil import writeImageData, getPattern, findValleys, smooth, normalize
@@ -10,6 +10,7 @@ from agent import AgentPainter
 from verticalSegment import VerticalSegment, identifyNonStaffSegments
 from system import System
 from staff import Staff
+from bar import Bar
 
 class ScoreImage(object):
     def __init__(self,fn):
@@ -78,16 +79,29 @@ class ScoreImage(object):
                 self.ap.paintHLine(j,alpha=0.9,step=4)
                 
         sysSegs = []
+
+        bf = []
         for i,system in enumerate(self.getSystems()):
-            if i == 0:
+            if True:
                 sys.stdout.write('drawing system {0}\n'.format(i))
                 sys.stdout.flush()
                 system.draw()
                 sysSegs.append(system.getCorrectedImgSegment())
                 barAgents = system.getBarLines()
+
+                #est = []
+                for j,a in enumerate(barAgents):
+                    b = Bar(system,a)
+                    bf.append(nu.append(system.getRotator().derotate(a.getDrawMean().reshape((1,2)))[0,:],b.getFeatures()))
+                    #est.append([j]+list(1000*b.getEstimates()))
+                #nu.savetxt('/tmp/s.txt',nu.array(bf).astype(nu.int),fmt='%d')
+                #nu.savetxt('/tmp/est.txt',nu.array(est).astype(nu.int),fmt='%d')
+
                 for a in barAgents:
                     self.ap.register(a)
                     self.ap.drawAgent(a,-300,300,system.getRotator())
+        bfname = os.path.join('/tmp/',os.path.splitext(os.path.basename(self.fn))[0]+'-barfeatures.txt')
+        nu.savetxt(bfname,nu.array(bf),fmt='%d')
         self.ap.writeImage(self.fn)
         if True:
             return True

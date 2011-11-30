@@ -176,12 +176,17 @@ class System(object):
             print(f0,ext)
             ap.writeImage(f0+'-sys{0:04d}.png'.format(int(self.getLowerLeft()[0])))
         agents.sort(key=lambda x: x.getDrawMean()[1])
-
+        
+        if True:
+            return agents
+        bf = []
+        est = []
         for j,a in enumerate(agents):
             b = Bar(self,a)
             ap1 = AgentPainter(b.getNeighbourhood())
             #bu = b.findVerticalStaffLinePositions()
-            b.getFeatures()
+            bf.append([j]+list(b.getFeatures()))
+            est.append([j]+list(1000*b.getEstimates()))
             #print(bu)
             #for i,u in enumerate(bu):
             #    ap1.paintHLine(nu.floor(u),step=2,color=(255,0,0))
@@ -189,11 +194,9 @@ class System(object):
             ap1.paintVLine(b.getBarHCoords()[0],step=2,color=(255,0,0))
             ap1.paintVLine(b.getBarHCoords()[1],step=2,color=(255,0,0))
             ap1.writeImage('bar-{0:03d}.png'.format(j))
-
+        nu.savetxt('/tmp/s.txt',nu.array(bf).astype(nu.int),fmt='%d')
+        nu.savetxt('/tmp/est.txt',nu.array(est).astype(nu.int),fmt='%d')
         return agents
-
-    def getBarLineFeatures(self):
-        pass
 
     def getSystemWidth(self):
         # this gets cut off from the width, to fit in the page rotated
