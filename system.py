@@ -180,17 +180,17 @@ class System(object):
         for j,a in enumerate(agents):
             b = Bar(self,a)
             ap1 = AgentPainter(b.getNeighbourhood())
-            bu = b.findVerticalStaffLinePositions()
-            print(bu)
-            for i,u in enumerate(bu):
-                ap1.paintHLine(nu.floor(u),step=2,color=(255,0,0))
-                ap1.paintHLine(nu.ceil(u+self.getStaffLineWidth()),step=2,color=(255,0,0))
+            #bu = b.findVerticalStaffLinePositions()
+            b.getFeatures()
+            #print(bu)
+            #for i,u in enumerate(bu):
+            #    ap1.paintHLine(nu.floor(u),step=2,color=(255,0,0))
+            #    ap1.paintHLine(nu.ceil(u+self.getStaffLineWidth()),step=2,color=(255,0,0))
             ap1.paintVLine(b.getBarHCoords()[0],step=2,color=(255,0,0))
             ap1.paintVLine(b.getBarHCoords()[1],step=2,color=(255,0,0))
             ap1.writeImage('bar-{0:03d}.png'.format(j))
 
         return agents
-
 
     def getBarLineFeatures(self):
         pass
