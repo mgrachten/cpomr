@@ -79,7 +79,7 @@ class VerticalSegment(object):
         print('default angle for this staff',defAngle)
         stop = False
         finalStage = False
-        nFinalRuns = 10
+        nFinalRuns = 20
         #draw = True
         draw = self.draw
         for i,c in enumerate(cols):
@@ -92,7 +92,7 @@ class VerticalSegment(object):
             agents = agentsnew
             agents.sort(key=lambda x: -x.score)
 
-            if len(agents) > 5 and i > 50 and not finalStage:
+            if len(agents) > 4 and i > 50 and not finalStage:
                 finalStage,selection = assessStaffLineAgents(agents,self.scrImage.getWidth(),
                                                              self.nPerStaff)
                 if finalStage:

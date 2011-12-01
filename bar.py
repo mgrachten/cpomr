@@ -37,9 +37,8 @@ class Bar(object):
         self.heightFactor = 1.2 # neighbourhood is heightFactor times systemHeight high
 
     @getter
-    def getFeatures(self):
+    def getFeatureIdx(self):
         w = self.agent.getLineWidth()
-        sd = int(nu.round(self.system.getStaffLineDistance()))
         h1,h2 = self.getBarHCoords()
         h0 = int(nu.round(h1-w))
         h3 = int(nu.round(h2+w))
@@ -47,7 +46,6 @@ class Bar(object):
         staffBots = staffTops+self.system.getStaffLineWidth()
         staffTops = nu.round(staffTops).astype(nu.int)
         staffBots = nu.round(staffBots).astype(nu.int)
-        nh = self.getNeighbourhood()
         staffIdx = nu.array([x for x in 
                              chain.from_iterable([range(staffTops[i],staffBots[i]) 
                                                   for i in range(len(staffTops))])])
@@ -58,8 +56,60 @@ class Bar(object):
                                    chain.from_iterable([range(staffBots[i],staffTops[i+1]) 
                                                         for i in range(5,8)])])
         interStaffIdx = nu.append(interStaffIdx0,interStaffIdx1)
-        #interStaffIdx = nu.array([range(staffBots[i],staffTops[i+1]) 
-        #                          for i in range(len(staffTops)-1)]).flat[:]
+        return {'h0':h0,'h1':h1,'h2':h2,'h3':h3,
+                'staffTops':staffTops,'staffBots':staffBots,
+                'staff':staffIdx,'interStaff':interStaffIdx}
+
+    def checkStaffLines(self):
+        """Return the max staff line blackness on both sides of the bar,
+        after subtracting the blackness above and below the staff lines.
+        This yields low values for lines that are not on a staff (e.g. the accolade)
+        """
+        h0 = self.getFeatureIdx()['h0']
+        h1 = self.getFeatureIdx()['h1']
+        h2 = self.getFeatureIdx()['h2']
+        h3 = self.getFeatureIdx()['h3']
+        staffTops = self.getFeatureIdx()['staffTops']
+        staffBots = self.getFeatureIdx()['staffBots']
+        staffIdx = self.getFeatureIdx()['staff']
+        w = int(nu.ceil(self.system.getStaffLineWidth()))
+        aboveStaffIdx = nu.array([x for x in 
+                                   chain.from_iterable([range(staffTops[i]-w,staffTops[i]) 
+                                                        for i in range(len(staffTops))])])
+        belowStaffIdx = nu.array([x for x in 
+                                   chain.from_iterable([range(staffBots[i],staffBots[i]+w) 
+                                                        for i in range(len(staffTops))])])
+        interStaffIdx = self.getFeatureIdx()['interStaff']
+        nh = self.getNeighbourhood()
+        staffLeft = nu.mean(nh[staffIdx,h0:h1])
+        staffRight = nu.mean(nh[staffIdx,h2:h3])
+
+        aboveStaffLeft = nu.mean(nh[aboveStaffIdx,h0:h1])
+        belowStaffLeft = nu.mean(nh[belowStaffIdx,h0:h1])
+        staffLeft = nu.mean(nh[staffIdx,h0:h1])
+        aboveStaffRight = nu.mean(nh[aboveStaffIdx,h2:h3])
+        belowStaffRight = nu.mean(nh[belowStaffIdx,h2:h3])
+        staffRight = nu.mean(nh[staffIdx,h2:h3])
+        print('sl',staffLeft,aboveStaffLeft,belowStaffLeft)
+        print('sr',staffRight,aboveStaffRight,belowStaffRight)
+        print('r',max(staffLeft-max(aboveStaffLeft,belowStaffLeft),
+                      staffRight-max(aboveStaffRight,belowStaffRight)))
+        return max(staffLeft-max(aboveStaffLeft,belowStaffLeft),
+                   staffRight-max(aboveStaffRight,belowStaffRight))
+
+    @getter
+    def getFeatures(self):
+        sd = int(nu.round(self.system.getStaffLineDistance()))
+        h0 = self.getFeatureIdx()['h0']
+        h1 = self.getFeatureIdx()['h1']
+        h2 = self.getFeatureIdx()['h2']
+        h3 = self.getFeatureIdx()['h3']
+        staffTops = self.getFeatureIdx()['staffTops']
+        staffBots = self.getFeatureIdx()['staffBots']
+        staffIdx = self.getFeatureIdx()['staff']
+        interStaffIdx = self.getFeatureIdx()['interStaff']
+        nh = self.getNeighbourhood()
+        
         barStaff0 = nu.mean(nh[staffTops[0]:staffBots[4],h1:h2])
         barStaff1 = nu.mean(nh[staffTops[5]:staffBots[9],h1:h2])
         interStaff = nu.mean(nh[staffBots[4]:staffTops[5],h1:h2])
@@ -91,6 +141,7 @@ class Bar(object):
     # * bars that are close: adapt margins to avoid interference?
     # * take apart wider bars: redo bar detection to separate double bars?
     # * increase impact of white in barStaff0 and barStaff1
+    
 
     @getter
     def getEstimates(self):
@@ -130,8 +181,6 @@ class Bar(object):
         hhalf = int(sysHeight*self.heightFactor/2.)
         sld = self.system.staffs[0].getStaffLineDistance()
         krng = range(-int(nu.ceil(.5*sld)),int(nu.ceil(.5*sld)))
-        print(self.getNeighbourhood().shape)
-        print('o')
         hsums = nu.sum(self.getNeighbourhood(),1)
         hslw = int(nu.floor(.5*self.system.getStaffLineWidth()))
 
@@ -152,10 +201,10 @@ class Bar(object):
         system0Top = self.system.getRotator().rotate(self.system.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
         system1Bot = self.system.getRotator().rotate(self.system.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
         sysHeight = (system1Bot-system0Top)
-
+        print(system0Top)
+        print(system1Bot)
         whalf = int(self.agent.getLineWidth()*self.widthFactor/2.)
         hhalf = int(sysHeight*self.heightFactor/2.)
-        print(whalf,hhalf)
 
         yTop = self.agent.getDrawMean()[1]+(system0Top-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.getAngle())
         yBot = self.agent.getDrawMean()[1]+(system1Bot-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.getAngle())
@@ -163,10 +212,11 @@ class Bar(object):
         r = Rotator(self.agent.getAngle()-.5,middle,nu.array((0,0.)))
         xx,yy = nu.mgrid[-hhalf:hhalf,-whalf:whalf]
         xxr,yyr = r.derotate(xx,yy)
-
         # check if derotated neighbourhood is inside image
         minx,maxx,miny,maxy = nu.min(xxr),nu.max(xxr),nu.min(yyr),nu.max(yyr)
         M,N = self.system.getCorrectedImgSegment().shape
+        #print('w,h',middle)
+        #print('mm',minx,maxx,M,miny,maxy,N)
         if minx < 0 or miny < 0 or maxx >= M or maxy >= N:
             return None
 

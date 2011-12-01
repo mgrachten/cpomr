@@ -40,28 +40,53 @@ class ScoreImage(object):
     def getHeight(self):
         return self.getImg().shape[0]
 
-    @getter
-    def getStaffs(self):
+    def selectStaffs(self,staffs):
         # staffs get selected if their avg staffline distance (ASD) is
         # larger than thresholdPropOfMax times the largest ASD over all staffs
-        thresholdPropOfMax = .75
-        staffs = []
-        for i,vs in enumerate(self.getStaffSegments()):
-            print('Processing staff segment {0}'.format(i))
-            #vs.draw = i==1
-            staffs.extend([Staff(self,s,vs.top,vs.bottom) for s in vs.getStaffLines()])
-        for staff in staffs:
-            print(staff)
+        #thresholdPropOfMax = .75
+        maxStaffLineDistDev = .05
+        print('original nr of staffs',len(staffs))
         slDists = nu.array([staff.getStaffLineDistance() for staff in staffs])
         print('avg staff line distance per staff:')
         print(slDists)
-        maxDist = nu.max(slDists)
-        print('original nr of staffs',len(staffs))
-        staffs = list(nu.array(staffs)[slDists >= thresholdPropOfMax*maxDist])
+        # take the largest avg staff distance as the standard,
+        # this discards mini staffs
+        medDist = nu.median(slDists)
+        print('staff line distances')
+        staffs = [staff for staff in staffs if
+                  nu.sum([nu.abs(x-medDist) for x in 
+                          staff.getStaffLineDistances()])/(medDist*5) < maxStaffLineDistDev]
+        #staffs = list(nu.array(staffs)[slDists >= thresholdPropOfMax*maxDist])
+        #slDistStds = nu.array([staff.getStaffLineDistanceStd() for staff in staffs])
+        #print('sd staff line distance per staff:')
+        #print(slDistStds)
+        #medStd = nu.median(slDistStds)
+        #staffs = list(nu.array(staffs)[slDistStds <= .04*maxDist])
         print('new nr of staffs',len(staffs))
+        return staffs
+
+    @getter
+    def getStaffs(self):
+        staffs = []
+        for i,vs in enumerate(self.getStaffSegments()):
+            self.ap.paintHLine(vs.bottom)
+            x = nu.arange(vs.top,vs.bottom)
+            self.ap.paintRav(nu.column_stack((x,i*2*nu.ones(len(x)))),color=(10,10,10))
+            print('vs',i,vs.top,vs.bottom)
+            print('Processing staff segment {0}'.format(i))
+            #vs.draw = i==2
+            staffs.extend([Staff(self,s,vs.top,vs.bottom) for s in vs.getStaffLines()])
+        staffs = self.selectStaffs(staffs)
+        for staff in staffs:
+            print(staff)
+            staff.draw()
+        self.ap.writeImage('tst.png')
+        self.ap.reset()
         if len(staffs)%2 != 0:
             print('WARNING: detected unequal number of staffs!')
+            print(self.fn)
             print('TODO: retry to find an equal number of staffs')
+
         return staffs
 
     @getter
@@ -83,9 +108,10 @@ class ScoreImage(object):
 
         bf = []
         for i,system in enumerate(self.getSystems()):
-            if True:
+            if True: #i==1: 
                 sys.stdout.write('drawing system {0}\n'.format(i))
                 sys.stdout.flush()
+                system.dodraw = True
                 system.draw()
                 sysSegs.append(system.getCorrectedImgSegment())
                 barAgents = [x.agent for x in system.getBars()]

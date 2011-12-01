@@ -24,10 +24,7 @@ class System(object):
         self.scrImage = scoreImage
         self.staffs = staffs
         self.barPoints = []
-        # self.Qg, the point in the middle of the lower border of the system 
-        # in the coordinate system of the original picture (global)
-        # this is the point around which the rotation is done
-        #self.Qg = nu.array((self.getBottom()-1,int(self.scrImage.getWidth()/2.)))
+        self.dodraw = False
         
     def getTop(self):
         return self.staffs[0].top
@@ -54,8 +51,10 @@ class System(object):
         # returns topleft, topright, botleft, botright, and lower hmid
         # of tilted rectangle, such that all above coordinates fall inside the img
         hMid = int(self.scrImage.getWidth()/2.)
-        top = self.staffs[0].top
-        bot = self.staffs[1].bottom
+        extra = nu.array((int(nu.ceil(self.getStaffLineDistance())),0))
+
+        top = self.staffs[0].top-extra[0]
+        bot = self.staffs[1].bottom+extra[0]
 
         dyl = -hMid
         dyr = self.scrImage.getWidth()-hMid
@@ -114,12 +113,12 @@ class System(object):
         BarAgent = makeAgentClass(targetAngle=defBarAngle,
                                   maxAngleDev=4/180.,
                                   #maxError=1,
-                                  maxError=self.getStaffLineWidth()/8.0,
+                                  maxError=self.getStaffLineWidth()/7.0,
                                   minScore=-2,
                                   offset=0)
         systemTopL = self.getRotator().rotate(self.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
         systemBotL = self.getRotator().rotate(self.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
-        bins = 7
+        bins = 5
         hsums = self.getHSums()[int(systemTopL):int(systemBotL)]
         rows = selectColumns(hsums,bins)[0]+int(systemTopL) # sounds funny, change name of function       
         #rows = [p for p in selectColumns(self.getHSums(),bins)[0] if systemTopL <= p <= systemBotL] # sounds funny, change name of function
@@ -128,7 +127,8 @@ class System(object):
         k = 0
         ap = AgentPainter(self.getCorrectedImgSegment())
         #draw = True
-        draw = False
+        #draw = False
+        draw = self.dodraw
         for i,r in enumerate(rows[:int(.1*len(rows))]):
             died = []
             agentsnew,d = assignToAgents(self.getCorrectedImgSegment()[r,:],agents,BarAgent,
@@ -157,14 +157,21 @@ class System(object):
                 f0,ext = os.path.splitext(self.scrImage.fn)
                 print(f0,ext)
                 ap.writeImage(f0+'-{0:04d}-r{1}'.format(i,r)+'.png')
-        k = sortBarAgents(agents)
-        bAgents = agents[:k]
+        #k = sortBarAgents(agents)
+        bAgents = [a for a in agents if a.score > 1]
+        bAgents.sort(key=lambda x: -x.score)
+        #bAgents = agents[:k]
         meanScore = nu.mean([a.score for a in bAgents])
         meanAge = nu.mean([a.age for a in bAgents])
         for j,a in enumerate(agents):
             print('{0} {1}'.format(j,a))
         agents = [a for a in agents if a.score > .2*meanScore and a.age > .5*meanAge]
         print('chose {0} agents'.format(len(agents)))
+        agents.sort(key=lambda x: x.getDrawMean()[1])
+        
+        if True:
+            return agents
+
         draw = False
         if draw:
             ap.reset()
@@ -172,13 +179,9 @@ class System(object):
                 print(a)
                 ap.register(a)
                 ap.drawAgentGood(a,-300,300)
-            f0,ext = os.path.splitext(fn)
+            f0,ext = os.path.splitext(self.scrImage.fn)
             print(f0,ext)
             ap.writeImage(f0+'-sys{0:04d}.png'.format(int(self.getLowerLeft()[0])))
-        agents.sort(key=lambda x: x.getDrawMean()[1])
-        
-        if True:
-            return agents
         bf = []
         est = []
         for j,a in enumerate(agents):
@@ -201,7 +204,12 @@ class System(object):
     @getter
     def getBars(self):
         bars = [Bar(self,x) for x in self.getBarLines()]
-        bars = [x for x in bars if x.getNeighbourhood() != None]
+        print('bars',len(bars))
+        for b in bars:
+            pass #print(b.getNeighbourhood())
+        bars = [x for x in bars if x.getNeighbourhood() != None
+                and x.checkStaffLines() > 50]
+        print('bars nonempty neighbourhood',len(bars))
         return bars
 
     def getSystemWidth(self):
@@ -222,6 +230,7 @@ class System(object):
     def getCorrectedImgSegment(self):
         halfSystemWidth = int((self.getSystemWidth()-1)/2)
         r = self.getRotator()
+        #xx,yy = nu.mgrid[0:self.getSystemHeight(),-halfSystemWidth:halfSystemWidth]
         xx,yy = nu.mgrid[0:self.getSystemHeight(),-halfSystemWidth:halfSystemWidth]
         yy += self.getLowerMidLocal()[1]
         xxr,yyr = r.derotate(xx,yy)

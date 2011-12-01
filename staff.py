@@ -6,12 +6,13 @@ from utilities import getter
 
 def sortStaffLineAgents(agents,k=10):
     agents.sort(key=lambda x: -x.score)
-    N = len(agents)
-    scores = nu.array([a.score for a in agents])
+    scores = nu.array([a.score for a in agents]+[0]*5)
+    N = len(scores)
     if nu.min(scores) == nu.max(scores):
         return agents
 
     meanScorePerSystem = [nu.mean(scores[i:i+k]) for i in range(0,N,k)]
+    print(meanScorePerSystem)
     dms = nu.diff(meanScorePerSystem)
     nsystems = nu.argmin(dms)+1
     print('estimating ',nsystems,'groups,',k*nsystems,'stafflines')
@@ -43,8 +44,9 @@ class Staff(object):
         self.bottom = bottom
         self.staffLineAgents.sort(key=lambda x: x.getMiddle(self.scrImage.getWidth()))
     def __str__(self):
-        return 'Staff {0}; nAgents: {1}; avggap: {2}'\
-            .format(self.__hash__(),len(self.staffLineAgents),self.getStaffLineDistance())
+        return 'Staff {0}; nAgents: {1}; avggap: {2}: top: {3}; bot: {4}'\
+            .format(self.__hash__(),len(self.staffLineAgents),self.getStaffLineDistance(),
+                    self.top,self.bottom)
     def draw(self):
         for agent in self.staffLineAgents:
             self.scrImage.ap.register(agent)
@@ -68,9 +70,17 @@ class Staff(object):
                       self.staffLineAgents[-1].getIntersection(rTop,rBot)[0]+x1offset])
         return xx[0],xx[-1]
 
+    @getter 
+    def getStaffLineDistances(self):
+        return nu.diff([a.getMiddle(self.scrImage.getWidth()) for a in self.staffLineAgents])
+
     @getter
     def getStaffLineDistance(self):
-        return nu.mean(nu.diff([a.getMiddle(self.scrImage.getWidth()) for a in self.staffLineAgents]))
+        return nu.mean(self.getStaffLineDistances())
+
+    @getter
+    def getStaffLineDistanceStd(self):
+        return nu.std(self.getStaffLineDistances())
 
 if __name__ == '__main__':
     pass
