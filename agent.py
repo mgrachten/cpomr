@@ -123,13 +123,15 @@ def tls(X):
 def getError(x,a):
     return nu.sum(nu.dot(x,nu.array([nu.cos(a*nu.pi),-nu.sin(a*nu.pi)]).T)**2)**.5
 
-def makeAgentClass(targetAngle,maxAngleDev,maxError,minScore,offset=0):
+def makeAgentClass(targetAngle,maxAngleDev,maxError,minScore,offset=0,yoffset=0):
     class CustomAgent(Agent): pass
     CustomAgent.targetAngle = (targetAngle+1.0)%1
     CustomAgent.maxError = maxError
     CustomAgent.maxAngleDev = maxAngleDev
     CustomAgent.minScore = minScore
     CustomAgent.offset = offset
+    CustomAgent.yoffset = yoffset
+    CustomAgent.aoffset = nu.array((offset,yoffset))
     return CustomAgent
 
 class Agent(object):
@@ -159,7 +161,7 @@ class Agent(object):
     def __str__(self):
         return 'Agent: {id}; angle: {angle:0.4f} ({ta:0.4f}+{ad:0.4f}); error: {err:0.3f} age: {age}; npts: {pts}; score: {score}; mean: {mean}'\
             .format(id=self.id,err=self.error,angle=self.getAngle(),ta=self.targetAngle,ad=self.angleDev,
-                    age=self.age,pts=self.points.shape[0],score=self.score,mean=self.mean)
+                    age=self.age,pts=self.points.shape[0],score=self.score,mean=self.getDrawMean())
     
     def getLineWidth(self):
         return self.lw
@@ -176,9 +178,9 @@ class Agent(object):
         return self.targetAngle + self.angleDev
 
     def getDrawPoints(self):
-        return self.points+nu.array([self.offset,0])
+        return self.points+self.aoffset
     def getDrawMean(self):
-        return self.mean+nu.array([self.offset,0])
+        return self.mean+self.aoffset
 
     def getMiddle(self,M):
         "get Vertical position of agent at the horizontal center of the page of width M" 

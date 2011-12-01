@@ -103,7 +103,77 @@ class System(object):
     def getStaffLineDistance(self):
         return (self.staffs[0].getStaffLineDistance()+self.staffs[1].getStaffLineDistance())/2.0
 
+    def getImgHParts(self,hbins,overlap):
+        M,N = self.getCorrectedImgSegment().shape
+        overlapPix = int(overlap*N/2.)
+        breaks = nu.linspace(0,N,hbins+1)
+        lefts = breaks[:-1].copy()
+        lefts[1:] -= overlapPix
+        rights = breaks[1:].copy()
+        rights[:-1] += overlapPix
+        return [self.getCorrectedImgSegment()[:,lefts[i]:rights[i]]
+                for i in range(len(lefts))],lefts
+            
+    @getter
     def getBarLines(self):
+        """
+        strategy:
+        * run barline detection for different (slightly overlapping) segements
+        * join agents (+merge)
+        """
+        #systemTopL = self.getRotator().rotate(self.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
+        #systemBotL = self.getRotator().rotate(self.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
+        vbins = 5
+        hbins = 5
+        overlap = .1 # of width
+        hparts,lefts = self.getImgHParts(hbins,overlap)
+        agents = []
+        for i,hpart in enumerate(hparts):
+            agents.extend(self.getBarLinesPart(hpart,vbins,lefts[i]))
+        agents,died = mergeAgents(agents)
+        agents.sort(key=lambda x: -x.score)
+        for a in agents:
+            print(a)
+        #print('s',[x.shape for x in p])
+        return agents
+        #hsums = self.getHSums()[int(systemTopL):int(systemBotL)]
+        #rows = selectColumns(hsums,bins)[0]+int(systemTopL) # sounds funny, change name of function       
+        
+    def getBarLinesPart(self,img,vbins,yoffset):
+        BarAgent = makeAgentClass(targetAngle=.5,
+                                  maxAngleDev=4/180.,
+                                  #maxError=1,
+                                  maxError=self.getStaffLineWidth()/7.0,
+                                  minScore=-2,
+                                  yoffset=yoffset)
+        agents = []
+        systemTopL = self.getRotator().rotate(self.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
+        systemBotL = self.getRotator().rotate(self.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
+        hsums = nu.sum(img,1)[int(systemTopL):int(systemBotL)]
+        rows = selectColumns(hsums,vbins)[0]+int(systemTopL) # sounds funny, change name of function       
+
+        #ap = AgentPainter(self.getCorrectedImgSegment())
+        #draw = self.dodraw
+        K = int(.2*len(rows))
+        for i,r in enumerate(rows[:K]):
+            died = []
+            agentsnew,d = assignToAgents(img[r,:],agents,BarAgent,
+                                         self.getCorrectedImgSegment().shape[1],
+                                         vert=r,fixAgents=False)
+            died.extend(d)
+
+            if len(agents) > 2:
+                agentsnew,d = mergeAgents(agentsnew)
+                died.extend(d)
+            agents = agentsnew
+            #assert len(set(agents).intersection(set(died))) == 0
+            #print('row',i)
+            if len(agents) > 1:
+                agents.sort(key=lambda x: -x.score)
+        return [a for a in agents if a.score > 1 and a.age > .1*K]
+
+    @getter
+    def getBarLinesOld(self):
         agents = []
         defBarAngle = .5 #(self.getStaffAngle()+.5)%1
         print('default staff angle for this system',self.getStaffAngle())
@@ -129,7 +199,7 @@ class System(object):
         #draw = True
         #draw = False
         draw = self.dodraw
-        for i,r in enumerate(rows[:int(.1*len(rows))]):
+        for i,r in enumerate(rows[:int(.15*len(rows))]):
             died = []
             agentsnew,d = assignToAgents(self.getCorrectedImgSegment()[r,:],agents,BarAgent,
                                             self.getCorrectedImgSegment().shape[1],vert=r,fixAgents=finalStage)

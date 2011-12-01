@@ -111,7 +111,7 @@ class ScoreImage(object):
             if True: #i==1: 
                 sys.stdout.write('drawing system {0}\n'.format(i))
                 sys.stdout.flush()
-                system.dodraw = True
+                #system.dodraw = True
                 system.draw()
                 sysSegs.append(system.getCorrectedImgSegment())
                 barAgents = [x.agent for x in system.getBars()]
