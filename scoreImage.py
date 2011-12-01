@@ -48,6 +48,7 @@ class ScoreImage(object):
         staffs = []
         for i,vs in enumerate(self.getStaffSegments()):
             print('Processing staff segment {0}'.format(i))
+            #vs.draw = i==1
             staffs.extend([Staff(self,s,vs.top,vs.bottom) for s in vs.getStaffLines()])
         for staff in staffs:
             print(staff)
@@ -87,19 +88,22 @@ class ScoreImage(object):
                 sys.stdout.flush()
                 system.draw()
                 sysSegs.append(system.getCorrectedImgSegment())
-                barAgents = system.getBarLines()
-
+                barAgents = [x.agent for x in system.getBars()]
+                
                 #est = []
-                for j,a in enumerate(barAgents):
-                    b = Bar(system,a)
-                    bf.append(nu.append(system.getRotator().derotate(a.getDrawMean().reshape((1,2)))[0,:],b.getFeatures()))
+                #for j,a in enumerate(barAgents):
+                #    b = Bar(system,a)
+                #    bf.append(nu.append(system.getRotator().derotate(a.getDrawMean().reshape((1,2)))[0,:],b.getFeatures()))
                     #est.append([j]+list(1000*b.getEstimates()))
                 #nu.savetxt('/tmp/s.txt',nu.array(bf).astype(nu.int),fmt='%d')
                 #nu.savetxt('/tmp/est.txt',nu.array(est).astype(nu.int),fmt='%d')
 
                 for a in barAgents:
                     self.ap.register(a)
-                    self.ap.drawAgent(a,-300,300,system.getRotator())
+                    b0 = system.getTop()-system.getRotator().derotate(a.getDrawMean().reshape((1,2)))[0,0]
+                    b1 = system.getBottom()-system.getRotator().derotate(a.getDrawMean().reshape((1,2)))[0,0]
+                    #self.ap.drawAgent(a,-300,300,system.getRotator())
+                    self.ap.drawAgent(a,int(b0),int(b1),system.getRotator())
         bfname = os.path.join('/tmp/',os.path.splitext(os.path.basename(self.fn))[0]+'-barfeatures.txt')
         nu.savetxt(bfname,nu.array(bf),fmt='%d')
         self.ap.writeImage(self.fn)

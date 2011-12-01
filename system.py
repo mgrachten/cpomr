@@ -198,6 +198,12 @@ class System(object):
         nu.savetxt('/tmp/est.txt',nu.array(est).astype(nu.int),fmt='%d')
         return agents
 
+    @getter
+    def getBars(self):
+        bars = [Bar(self,x) for x in self.getBarLines()]
+        bars = [x for x in bars if x.getNeighbourhood() != None]
+        return bars
+
     def getSystemWidth(self):
         # this gets cut off from the width, to fit in the page rotated
         cutOff = nu.abs(self.getSystemHeight()*nu.tan(nu.pi*self.getStaffAngle()))

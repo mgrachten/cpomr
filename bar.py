@@ -130,6 +130,8 @@ class Bar(object):
         hhalf = int(sysHeight*self.heightFactor/2.)
         sld = self.system.staffs[0].getStaffLineDistance()
         krng = range(-int(nu.ceil(.5*sld)),int(nu.ceil(.5*sld)))
+        print(self.getNeighbourhood().shape)
+        print('o')
         hsums = nu.sum(self.getNeighbourhood(),1)
         hslw = int(nu.floor(.5*self.system.getStaffLineWidth()))
 
@@ -153,6 +155,7 @@ class Bar(object):
 
         whalf = int(self.agent.getLineWidth()*self.widthFactor/2.)
         hhalf = int(sysHeight*self.heightFactor/2.)
+        print(whalf,hhalf)
 
         yTop = self.agent.getDrawMean()[1]+(system0Top-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.getAngle())
         yBot = self.agent.getDrawMean()[1]+(system1Bot-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.getAngle())
@@ -171,6 +174,7 @@ class Bar(object):
         vCorrection = getVCenterOfBarline(cimg,self.kRange)-hhalf
         # TODO: check if barneighbourhood is inside corrected system segment
         cimg = getAntiAliasedImg(self.system.getCorrectedImgSegment(),xxr+vCorrection,yyr)
+        print(cimg.shape)
         return cimg
     
 

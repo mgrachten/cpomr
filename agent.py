@@ -12,6 +12,7 @@ def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False,maxW
     if len(data) > 1:
         candidates = [tuple(x) if len(x)==1 else (x[0],x[-1]) for x in 
                       nu.split(data,nu.nonzero(nu.diff(data)>1)[0]+1)]
+        #print(candidates)
     elif len(data) == 1:
         candidates = [tuple(data)]
     else:
@@ -24,7 +25,6 @@ def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False,maxW
         candidates = [[nu.array([vert,horz]) for vert in vertz] for vertz in candidates]
     else:
         print('error, need to specify vert or horz')
-
     unadopted = []
     bids = None
     newagents =[]
@@ -65,7 +65,8 @@ def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False,maxW
         newagents.extend([agents[x] for x in set(range(len(agents))).difference(adopters)])
     if not fixAgents:
         for i in unadopted:
-            if len(candidates[i]) >1 and (candidates[i][-1][0]-candidates[i][0][0]) <= M/50.:
+            #print('unadopted',candidates[i])
+            if len(candidates[i]) == 1 or (len(candidates[i]) >1 and (candidates[i][-1][0]-candidates[i][0][0]) <= M/50.):
                 # only add an agent if we are on a small section
                 newagent = AgentType(nu.mean(nu.array(candidates[i]),0))
                 newagents.append(newagent)
@@ -459,7 +460,7 @@ class AgentPainter(object):
         #print('point',coord,img.shape)
         self.img[:,int(coord[0]),int(coord[1])] = (1-alpha)*self.img[:,int(coord[0]),int(coord[1])]+alpha*color
 
-    def paintVLine(self,y,alpha=.5,step=1,color=(255,255,255)):
+    def paintVLine(self,y,alpha=.5,step=1,color=(100,0,100)):
         if 0 <= y < self.img.shape[2]:
             self.img[0,::step,y] = nu.minimum(255,nu.maximum(0,((1-alpha)*self.img[0,::step,y]+alpha*color[0]))).astype(nu.uint8)
             self.img[1,::step,y] = nu.minimum(255,nu.maximum(0,((1-alpha)*self.img[1,::step,y]+alpha*color[1]))).astype(nu.uint8)

@@ -51,6 +51,7 @@ class VerticalSegment(object):
         self.colGroups = colGroups
         self.nPerStaff = 5
         self.containsStaff = True
+        self.draw = False
 
     def getVHSums(self):
         vsum = len(nu.nonzero(self.getVSums())[0])
@@ -70,15 +71,17 @@ class VerticalSegment(object):
         cols = selectColumns(self.getVSums(),self.colGroups)[0]
         StaffAgent = makeAgentClass(targetAngle=defAngle,
                                     maxAngleDev=2/180.,
-                                    maxError=1,
+                                    #maxError=.05,
+                                    maxError=self.scrImage.getWidth()/2000.,
                                     minScore=-2,
                                     offset=self.top)
-        draw = False
         f0 = os.path.splitext(self.scrImage.fn)[0]
         print('default angle for this staff',defAngle)
         stop = False
         finalStage = False
         nFinalRuns = 10
+        #draw = True
+        draw = self.draw
         for i,c in enumerate(cols):
             if nFinalRuns == 0:
                 break
