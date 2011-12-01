@@ -86,6 +86,12 @@ class Bar(object):
         print('mean interstaffline right from staffs',interStaffRight)
         return (barStaff0,barStaff1,aboveBar,belowBar,staffLeft,staffRight,interStaffLeft,interStaffRight,interStaff)
 
+    # todo:
+    # * staff border detection: take larger margins around bar to look for absent stafflines at one side
+    # * bars that are close: adapt margins to avoid interference?
+    # * take apart wider bars: redo bar detection to separate double bars?
+    # * increase impact of white in barStaff0 and barStaff1
+
     @getter
     def getEstimates(self):
         return nu.array((self.getBarEstimate(),self.getLeftMostBarEstimate(),self.getRightMostBarEstimate()))
