@@ -79,6 +79,8 @@ class System(object):
     def draw(self):
         for staff in self.staffs:
             staff.draw()
+        #self.scrImage.ap.drawText('s{0:02d}'.format(self.n),
+        #                          self.getUpperLeft(),size=30,color=(255,0,0),alpha=.8)
         self.drawBarPoints()
 
     def drawBarPoints(self):
@@ -137,6 +139,8 @@ class System(object):
         agents.sort(key=lambda x: -x.score)
         for a in agents:
             print(a)
+        agents.sort(key=lambda x: x.getDrawMean()[1])
+
         #print('s',[x.shape for x in p])
         return agents
         #hsums = self.getHSums()[int(systemTopL):int(systemBotL)]
@@ -287,15 +291,48 @@ class System(object):
         nu.savetxt('/tmp/est.txt',nu.array(est).astype(nu.int),fmt='%d')
         return agents
 
+    def getNonTerminatingBarCandidates(self):
+        bs = nu.array([b.checkStaffSymmetry() for b in self.getBarCandidates()])
+        sidx = nu.argsort(bs)
+        if len(bs) > 2:
+            return list(nu.array(self.getBarCandidates())[sidx[1:-1]])
+        else:
+            return []
+        
+    def selectOpeningClosingBars(self,bars):
+        # obsolete
+        bs = nu.array([b.checkStaffSymmetry() for b in bars])
+        opener = None
+        closer = None
+        if len(bs) < 4:
+            return (0,1)
+        sidx = nu.argsort(bs)
+        m = nu.mean(bs[sidx[1:-1]])
+        std = nu.std(bs[sidx[1:-1]])
+        if bs[sidx[0]]-m < 4*std:
+            opener = sidx[0]
+        if bs[sidx[-1]]-m > 4*std:
+            closer = sidx[-1]
+        return (opener,closer)
+
     @getter
     def getBars(self):
         bars = [Bar(self,x) for x in self.getBarLines()]
         print('bars',len(bars))
         for b in bars:
             pass #print(b.getNeighbourhood())
-        bars = [x for x in bars if x.getNeighbourhood() != None
-                and x.checkStaffLines() > 50]
+        bars = [x for x in bars if x.getNeighbourhood() != None and x.checkStaffLines() > 50]
+        #and x.checkStaffLines() > 50]# and x.checkInterStaffSymmetry()<200 ]
+        for i,b in enumerate(bars):
+            print(i,b.checkInterStaffSymmetry('s{0:03d}b{1:03d}.png'.format(self.n,i)),b.checkStaffSymmetry())
         print('bars nonempty neighbourhood',len(bars))
+        return bars
+
+    @getter
+    def getBarCandidates(self):
+        bars = [Bar(self,x) for x in self.getBarLines()]
+        #bars = [x for x in bars if x.getNeighbourhood() != None and x.checkStaffLines() > 50 ]
+        bars = [x for x in bars if x.getNeighbourhood() != None]
         return bars
 
     def getSystemWidth(self):

@@ -11,6 +11,27 @@ from verticalSegment import VerticalSegment, identifyNonStaffSegments
 from system import System
 from staff import Staff
 from bar import Bar
+from itertools import chain
+
+def selectOpenCloseBars(systems):
+    """
+    """
+
+    staffSym = nu.array([x.checkStaffSymmetry() for x in 
+                         chain.from_iterable([system.getNonTerminatingBarCandidates() 
+                                              for system in systems])])
+    m = nu.mean(staffSym)
+    std = nu.std(staffSym)
+    begin = 0
+    k = 0
+    for system in systems:
+        bc = system.getBarCandidates()
+        for b in bc:
+            ap = AgentPainter(b.getNeighbourhood())
+            ap.paintVLine(b.getBarHCoords()[0],alpha=.4,color=(255,0,0))
+            ap.paintVLine(b.getBarHCoords()[1],alpha=.4,color=(255,0,0))
+            ap.writeImage('b{0:04d}.png'.format(k))
+            k += 1
 
 class ScoreImage(object):
     def __init__(self,fn):
@@ -71,7 +92,7 @@ class ScoreImage(object):
         for i,vs in enumerate(self.getStaffSegments()):
             self.ap.paintHLine(vs.bottom)
             x = nu.arange(vs.top,vs.bottom)
-            self.ap.paintRav(nu.column_stack((x,i*2*nu.ones(len(x)))),color=(10,10,10))
+            #self.ap.paintRav(nu.column_stack((x,i*2*nu.ones(len(x)))),color=(10,10,10))
             print('vs',i,vs.top,vs.bottom)
             print('Processing staff segment {0}'.format(i))
             #vs.draw = i==2
@@ -79,9 +100,10 @@ class ScoreImage(object):
         staffs = self.selectStaffs(staffs)
         for staff in staffs:
             print(staff)
-            #staff.draw()
-        #self.ap.writeImage('tst.png')
-        #self.ap.reset()
+            staff.draw()
+        #self.ap.drawText('Maarten Grachten',pos=(230,200),size=30)
+        self.ap.writeImage('tst.png')
+        self.ap.reset()
         if len(staffs)%2 != 0:
             print('WARNING: detected unequal number of staffs!')
             print(self.fn)
@@ -105,8 +127,13 @@ class ScoreImage(object):
                 self.ap.paintHLine(j,alpha=0.9,step=4)
                 
         sysSegs = []
+        k=0
+        barCandidates = []
+        selectOpenCloseBars(self.getSystems())
+        sys.exit()
+        for i,system in enumerate(self.getSystems()):
+            barCandidates.append(system.getBarCandidates())
 
-        bf = []
         for i,system in enumerate(self.getSystems()):
             if True: #i==1: 
                 sys.stdout.write('drawing system {0}\n'.format(i))
@@ -115,20 +142,18 @@ class ScoreImage(object):
                 system.draw()
                 sysSegs.append(system.getCorrectedImgSegment())
                 barAgents = [x.agent for x in system.getBars()]
-                
-                #est = []
-                #for j,a in enumerate(barAgents):
-                #    b = Bar(system,a)
-                #    bf.append(nu.append(system.getRotator().derotate(a.getDrawMean().reshape((1,2)))[0,:],b.getFeatures()))
-                    #est.append([j]+list(1000*b.getEstimates()))
-                #nu.savetxt('/tmp/s.txt',nu.array(bf).astype(nu.int),fmt='%d')
-                #nu.savetxt('/tmp/est.txt',nu.array(est).astype(nu.int),fmt='%d')
+                barAgents.sort(key=lambda x: x.getDrawMean()[1])
 
-                for a in barAgents:
+                for j,a in enumerate(barAgents):
                     self.ap.register(a)
                     b0 = system.getTop()-system.getRotator().derotate(a.getDrawMean().reshape((1,2)))[0,0]
                     b1 = system.getBottom()-system.getRotator().derotate(a.getDrawMean().reshape((1,2)))[0,0]
                     #self.ap.drawAgent(a,-300,300,system.getRotator())
+                    self.ap.drawText(#'{0:02d}({1:02d}:{2:02d})'.format(k,i,j),
+                        '{0:02d} ({1:02d})'.format(k,j),
+                                     nu.array((system.getTop(),a.getDrawMean()[1])),
+                                     size=14,color=(255,0,0),alpha=.8)
+                    k+=1
                     self.ap.drawAgent(a,int(b0),int(b1),system.getRotator())
         bfname = os.path.join('/tmp/',os.path.splitext(os.path.basename(self.fn))[0]+'-barfeatures.txt')
         nu.savetxt(bfname,nu.array(bf),fmt='%d')

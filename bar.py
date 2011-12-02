@@ -2,10 +2,11 @@
 
 import sys
 import numpy as nu
-from itertools import chain
+from itertools import chain,product
 from utilities import getter
 from imageUtil import getAntiAliasedImg
 from utils import Rotator
+from agent import AgentPainter
 
 def getVCenterOfBarline(bimg,kRange):
     """
@@ -38,10 +39,12 @@ class Bar(object):
 
     @getter
     def getFeatureIdx(self):
-        w = self.agent.getLineWidth()
+        #w = self.agent.getLineWidth()
         h1,h2 = self.getBarHCoords()
-        h0 = int(nu.round(h1-w))
-        h3 = int(nu.round(h2+w))
+        w = h2-h1
+        print('w',w)
+        h0 = h1-w
+        h3 = h2+w
         staffTops = self.getVerticalStaffLinePositions()
         staffBots = staffTops+self.system.getStaffLineWidth()
         staffTops = nu.round(staffTops).astype(nu.int)
@@ -50,16 +53,43 @@ class Bar(object):
                              chain.from_iterable([range(staffTops[i],staffBots[i]) 
                                                   for i in range(len(staffTops))])])
         interStaffIdx0 = nu.array([x for x in 
-                                   chain.from_iterable([range(staffBots[i],staffTops[i+1]) 
+                                   chain.from_iterable([range(staffBots[i]+1,staffTops[i+1]-1) 
                                                         for i in range(4)])])
         interStaffIdx1 = nu.array([x for x in 
-                                   chain.from_iterable([range(staffBots[i],staffTops[i+1]) 
-                                                        for i in range(5,8)])])
+                                   chain.from_iterable([range(staffBots[i]+1,staffTops[i+1]-1) 
+                                                        for i in range(5,9)])])
         interStaffIdx = nu.append(interStaffIdx0,interStaffIdx1)
         return {'h0':h0,'h1':h1,'h2':h2,'h3':h3,
                 'staffTops':staffTops,'staffBots':staffBots,
                 'staff':staffIdx,'interStaff':interStaffIdx}
 
+    def checkInterStaffSymmetry(self,n=None):
+        h0 = self.getFeatureIdx()['h0']
+        h1 = self.getFeatureIdx()['h1']
+        h2 = self.getFeatureIdx()['h2']
+        h3 = self.getFeatureIdx()['h3']
+        interStaff = self.getFeatureIdx()['interStaff']
+        nh = self.getNeighbourhood()
+        if n != None:
+            ap = AgentPainter(nh)
+            ml = nu.array([x for x in product(interStaff,nu.arange(h0,h1-1))])
+            mr = nu.array([x for x in product(interStaff,nu.arange(h2+1,h3))])
+            ap.paintRav(ml,color=(255,0,0),alpha=.4)
+            ap.paintRav(mr,color=(255,0,0),alpha=.4)
+            ap.writeImage(n)
+        return nu.mean(nu.abs(nh.astype(nu.int)[interStaff,h0:h1-1]-nh[interStaff,h2+1:h3]))
+
+    @getter
+    def checkStaffSymmetry(self):
+        h0 = self.getFeatureIdx()['h0']
+        h1 = self.getFeatureIdx()['h1']
+        h2 = self.getFeatureIdx()['h2']
+        h3 = self.getFeatureIdx()['h3']
+        staff = self.getFeatureIdx()['staff']
+        nh = self.getNeighbourhood()
+        print('nh',nh.shape,h0,h1,h2,h3)
+        return nu.mean(nh.astype(nu.int)[staff,h0:h1-1]-nh[staff,h2+1:h3])
+        
     def checkStaffLines(self):
         """Return the max staff line blackness on both sides of the bar,
         after subtracting the blackness above and below the staff lines.
@@ -90,10 +120,10 @@ class Bar(object):
         aboveStaffRight = nu.mean(nh[aboveStaffIdx,h2:h3])
         belowStaffRight = nu.mean(nh[belowStaffIdx,h2:h3])
         staffRight = nu.mean(nh[staffIdx,h2:h3])
-        print('sl',staffLeft,aboveStaffLeft,belowStaffLeft)
-        print('sr',staffRight,aboveStaffRight,belowStaffRight)
-        print('r',max(staffLeft-max(aboveStaffLeft,belowStaffLeft),
-                      staffRight-max(aboveStaffRight,belowStaffRight)))
+        #print('sl',staffLeft,aboveStaffLeft,belowStaffLeft)
+        #print('sr',staffRight,aboveStaffRight,belowStaffRight)
+        #print('r',max(staffLeft-max(aboveStaffLeft,belowStaffLeft),
+        #              staffRight-max(aboveStaffRight,belowStaffRight)))
         return max(staffLeft-max(aboveStaffLeft,belowStaffLeft),
                    staffRight-max(aboveStaffRight,belowStaffRight))
 
@@ -123,17 +153,15 @@ class Bar(object):
         staffRight = nu.mean(nh[staffIdx,h2:h3])
         interStaffLeft = nu.mean(nh[interStaffIdx,h0:h1])
         interStaffRight = nu.mean(nh[interStaffIdx,h2:h3])
-        print('bar upper staff',barStaff0)
-        print('bar lower staff',barStaff1)
-        print('above bar',aboveBar)
-        print('below bar',belowBar)
-        #print('si',staffIdx)
-        #print('isi',interStaffIdx)
-        print('inter staffline',interStaff)
-        print('mean staffline left from staffs',staffLeft)
-        print('mean staffline right from staffs',staffRight)
-        print('mean interstaffline left from staffs',interStaffLeft)
-        print('mean interstaffline right from staffs',interStaffRight)
+        # print('bar upper staff',barStaff0)
+        # print('bar lower staff',barStaff1)
+        # print('above bar',aboveBar)
+        # print('below bar',belowBar)
+        # print('inter staffline',interStaff)
+        # print('mean staffline left from staffs',staffLeft)
+        # print('mean staffline right from staffs',staffRight)
+        # print('mean interstaffline left from staffs',interStaffLeft)
+        # print('mean interstaffline right from staffs',interStaffRight)
         return (barStaff0,barStaff1,aboveBar,belowBar,staffLeft,staffRight,interStaffLeft,interStaffRight,interStaff)
 
     # todo:
@@ -169,8 +197,12 @@ class Bar(object):
         
     @getter
     def getBarHCoords(self):
-        b,e = (nu.array((-.5,.5))+self.widthFactor/2.0)*self.agent.getLineWidth()
-        return nu.array((nu.floor(b),nu.ceil(e))).astype(nu.int)
+        M = self.getNeighbourhood().shape[1]
+        return nu.round(nu.array(((M-self.agent.getLineWidth())/2.,(M+self.agent.getLineWidth())/2.))).astype(nu.int)
+        #b,e = (nu.array((-.5,.5))+self.widthFactor/2.0)*self.agent.getLineWidth()
+        #print('be',b,e)
+        #return nu.array((nu.floor(b),nu.ceil(e))).astype(nu.int)
+        #return nu.array((self.h1,self.h2)).astype(nu.int)
 
     @getter
     def getVerticalStaffLinePositions(self):
@@ -201,15 +233,23 @@ class Bar(object):
         system0Top = self.system.getRotator().rotate(self.system.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
         system1Bot = self.system.getRotator().rotate(self.system.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
         sysHeight = (system1Bot-system0Top)
-        print(system0Top)
-        print(system1Bot)
-        whalf = int(self.agent.getLineWidth()*self.widthFactor/2.)
-        hhalf = int(sysHeight*self.heightFactor/2.)
+        #print(system0Top)
+        #print(system1Bot)
 
         yTop = self.agent.getDrawMean()[1]+(system0Top-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.getAngle())
         yBot = self.agent.getDrawMean()[1]+(system1Bot-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.getAngle())
         middle = (nu.array((system0Top,yTop))+nu.array((system1Bot,yBot)))/2.0
+
+        h1 = nu.round(middle[1]-.5*self.agent.getLineWidth())
+        h2 = nu.round(middle[1]+.5*self.agent.getLineWidth())
+        w = h2-h1
+        whalf = int(nu.round(w*self.widthFactor/2.))
+        hhalf = int(sysHeight*self.heightFactor/2.)
+        
         r = Rotator(self.agent.getAngle()-.5,middle,nu.array((0,0.)))
+        self.h1 = nu.round(r.rotate(nu.array([[middle[0],h1]]))[0,1]+whalf)
+        self.h2 = nu.round(r.rotate(nu.array([[middle[0],h2]]))[0,1]+whalf)
+        #mh1 = nu.round(r.derotate(nu.array([[0,-.5*self.agent.getLineWidth()]]))[0,1]+whalf)
         xx,yy = nu.mgrid[-hhalf:hhalf,-whalf:whalf]
         xxr,yyr = r.derotate(xx,yy)
         # check if derotated neighbourhood is inside image
@@ -224,7 +264,7 @@ class Bar(object):
         vCorrection = getVCenterOfBarline(cimg,self.kRange)-hhalf
         # TODO: check if barneighbourhood is inside corrected system segment
         cimg = getAntiAliasedImg(self.system.getCorrectedImgSegment(),xxr+vCorrection,yyr)
-        print(cimg.shape)
+        #print(cimg.shape)
         return cimg
     
 

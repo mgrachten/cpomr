@@ -6,6 +6,7 @@ import numpy as nu
 from imageUtil import getImageData, writeImageData, makeMask, normalize, jitterImageEdges,getPattern
 from utilities import argpartition, partition, makeColors
 from copy import deepcopy
+from PIL import ImageDraw,ImageFont,Image
 
 def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False,maxWidth=nu.inf):
     data = nu.nonzero(v)[0]
@@ -391,6 +392,27 @@ class AgentPainter(object):
         
     def reset(self):
         self.img = self.imgOrig.copy()
+
+    def drawText(self, text, pos, size=30, color=(100,100,100), alpha=.5):
+        font = ImageFont.truetype('/usr/share/fonts/truetype/ttf-ubuntu-title/Ubuntu-Title.ttf', 
+                                  size)
+        size = font.getsize(text) # Returns the width and height of the given text, as a 2-tuple.
+        im = Image.new('L', size, 255) # Create a blank image with the given size
+        draw = ImageDraw.Draw(im)
+        draw.text((0,0), text, font=font, fill=None) #Draw text
+        d = 255-nu.array(im.getdata(),nu.uint8).reshape(size[::-1])
+        maxX = min(self.img.shape[1]-1,d.shape[0]+pos[0])-pos[0]
+        maxY = min(self.img.shape[2]-1,d.shape[1]+pos[1])-pos[1]
+        d = d[:maxX,:maxY]
+        xx,yy = nu.nonzero(d)
+        
+        vv = d[xx,yy]/255.
+        xx += pos[0]
+        yy += pos[1]
+        alpha = vv*alpha
+        self.img[0,xx,yy] = ((1-alpha)*self.img[0,xx,yy] + alpha*color[0]).astype(nu.uint8)
+        self.img[1,xx,yy] = ((1-alpha)*self.img[1,xx,yy] + alpha*color[1]).astype(nu.uint8)
+        self.img[2,xx,yy] = ((1-alpha)*self.img[2,xx,yy] + alpha*color[2]).astype(nu.uint8)
 
     def drawAgentGood(self,agent,rmin=-100,rmax=100):
         if self.agents.has_key(agent):
