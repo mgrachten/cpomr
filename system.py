@@ -20,12 +20,14 @@ def sortBarAgents(agents):
     return hyp+1
 
 class System(object):
-    def __init__(self,scoreImage,staffs):
+    def __init__(self,scoreImage,staffs,n=0):
         self.scrImage = scoreImage
         self.staffs = staffs
         self.barPoints = []
         self.dodraw = False
-        
+        # system counter
+        self.n = n
+
     def getTop(self):
         return self.staffs[0].top
     def getBottom(self):
@@ -51,6 +53,7 @@ class System(object):
         # returns topleft, topright, botleft, botright, and lower hmid
         # of tilted rectangle, such that all above coordinates fall inside the img
         hMid = int(self.scrImage.getWidth()/2.)
+        # sometimes the staff is close to the border of the segment
         extra = nu.array((int(nu.ceil(self.getStaffLineDistance())),0))
 
         top = self.staffs[0].top-extra[0]
@@ -112,7 +115,7 @@ class System(object):
         rights = breaks[1:].copy()
         rights[:-1] += overlapPix
         return [self.getCorrectedImgSegment()[:,lefts[i]:rights[i]]
-                for i in range(len(lefts))],lefts
+                for i in range(len(lefts))],lefts,rights
             
     @getter
     def getBarLines(self):
@@ -126,10 +129,10 @@ class System(object):
         vbins = 5
         hbins = 5
         overlap = .1 # of width
-        hparts,lefts = self.getImgHParts(hbins,overlap)
+        hparts,lefts,rights = self.getImgHParts(hbins,overlap)
         agents = []
         for i,hpart in enumerate(hparts):
-            agents.extend(self.getBarLinesPart(hpart,vbins,lefts[i]))
+            agents.extend(self.getBarLinesPart(hpart,vbins,lefts[i],rights[i],i))
         agents,died = mergeAgents(agents)
         agents.sort(key=lambda x: -x.score)
         for a in agents:
@@ -139,7 +142,7 @@ class System(object):
         #hsums = self.getHSums()[int(systemTopL):int(systemBotL)]
         #rows = selectColumns(hsums,bins)[0]+int(systemTopL) # sounds funny, change name of function       
         
-    def getBarLinesPart(self,img,vbins,yoffset):
+    def getBarLinesPart(self,img,vbins,yoffset,rightBorder,j):
         BarAgent = makeAgentClass(targetAngle=.5,
                                   maxAngleDev=4/180.,
                                   #maxError=1,
@@ -152,9 +155,12 @@ class System(object):
         hsums = nu.sum(img,1)[int(systemTopL):int(systemBotL)]
         rows = selectColumns(hsums,vbins)[0]+int(systemTopL) # sounds funny, change name of function       
 
-        #ap = AgentPainter(self.getCorrectedImgSegment())
+        ap = AgentPainter(self.getCorrectedImgSegment())
+        ap.paintVLine(yoffset,step=4,color=(50,150,50))
+        ap.paintVLine(rightBorder,step=4,color=(50,150,50))
         #draw = self.dodraw
-        K = int(.2*len(rows))
+        draw = False
+        K = int(.1*len(rows))
         for i,r in enumerate(rows[:K]):
             died = []
             agentsnew,d = assignToAgents(img[r,:],agents,BarAgent,
@@ -166,6 +172,16 @@ class System(object):
                 agentsnew,d = mergeAgents(agentsnew)
                 died.extend(d)
             agents = agentsnew
+            draw = False#self.n==0 and j==4
+            if draw:
+                ap.reset()
+                ap.paintHLine(r,step=2,color=(50,50,50))
+                for a in died:
+                    ap.unregister(a)
+                for a in agents:
+                    ap.register(a)
+                    ap.drawAgent(a,-400,400)
+                ap.writeImage('system{0:04d}-part{1:04d}-{2:04d}-r{3:04d}.png'.format(self.n,j,i,r))
             #assert len(set(agents).intersection(set(died))) == 0
             #print('row',i)
             if len(agents) > 1:

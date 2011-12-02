@@ -189,8 +189,10 @@ class Agent(object):
 
     def mergeable(self,other):
         if other.age > 1 and self.age > 1:
-            e0 = getError(other.points-self.mean,self.getAngle())/float(other.points.shape[0])
-            e1 = getError(self.points-other.mean,other.getAngle())/float(self.points.shape[0])
+            #e0 = getError(other.points-self.mean,self.getAngle())/float(other.points.shape[0])
+            #e1 = getError(self.points-other.mean,other.getAngle())/float(self.points.shape[0])
+            e0 = getError(other.getDrawPoints()-self.getDrawMean(),self.getAngle())/float(other.points.shape[0])
+            e1 = getError(self.getDrawPoints()-other.getDrawMean(),other.getAngle())/float(self.points.shape[0])
             #if 950 < self.mean[1] < 960 and 950 < other.mean[1] < 960:
             #    print('mergeable:')
             #    print(self)
@@ -200,20 +202,26 @@ class Agent(object):
         else:
             return self.maxError+1
 
-    def merge(self,other):
-        #self.points = nu.vstack((self.points,other.points))
+    def mergeOld(self,other):
         self.points = nu.array(tuple(set([tuple(y) for y in nu.vstack((self.points,other.points))])))
         self.lineWidth = self.lineWidth+other.lineWidth
         self.mean = nu.mean(self.points,0)
         self.angleDev = ((tls(self.points-self.mean)-self.targetAngle)+.5)%1-.5
         self.error = getError(self.points-self.mean,self.getAngle())/self.points.shape[0]
-        #self.scorehist = self.scorehist+other.scorehist
         self.age = max(self.age,other.age)
         self.score = self.score+other.score
-        #cp = os.path.commonprefix([self.id,other.id]).split('_')
-        #self.offspring = 0
-        #if len(cp) > 1:
-        #    self.id = '_'.join(cp[:-1])
+
+    def merge(self,other):
+        
+        self.points = nu.array(tuple(set([tuple(y) for y in 
+                                          nu.vstack((self.points,other.getDrawPoints()-self.aoffset))])))
+        self.lineWidth = self.lineWidth+other.lineWidth
+        self.mean = nu.mean(self.points,0)
+        self.angleDev = ((tls(self.points-self.mean)-self.targetAngle)+.5)%1-.5
+        self.error = getError(self.points-self.mean,self.getAngle())/self.points.shape[0]
+        self.age = max(self.age,other.age)
+        self.score = self.score+other.score
+        
             
     def tick(self,immortal=False):
         self.offspring = 0

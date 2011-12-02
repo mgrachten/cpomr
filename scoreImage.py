@@ -79,9 +79,9 @@ class ScoreImage(object):
         staffs = self.selectStaffs(staffs)
         for staff in staffs:
             print(staff)
-            staff.draw()
-        self.ap.writeImage('tst.png')
-        self.ap.reset()
+            #staff.draw()
+        #self.ap.writeImage('tst.png')
+        #self.ap.reset()
         if len(staffs)%2 != 0:
             print('WARNING: detected unequal number of staffs!')
             print(self.fn)
@@ -93,7 +93,7 @@ class ScoreImage(object):
     def getSystems(self):
         staffs = self.getStaffs()
         assert len(staffs)%2 == 0
-        return [System(self,(staffs[i],staffs[i+1])) for i in range(0,len(staffs),2)]
+        return [System(self,(staffs[i],staffs[i+1]),i/2) for i in range(0,len(staffs),2)]
 
     def drawImage(self):
         # draw segment boundaries
