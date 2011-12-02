@@ -88,7 +88,8 @@ class Bar(object):
         staff = self.getFeatureIdx()['staff']
         nh = self.getNeighbourhood()
         print('nh',nh.shape,h0,h1,h2,h3)
-        return nu.mean(nh.astype(nu.int)[staff,h0:h1-1]-nh[staff,h2+1:h3])
+        #return nu.mean(nh.astype(nu.int)[staff,h0:h1-1]-nh[staff,h2+1:h3])
+        return nu.mean(nh.astype(nu.int)[staff,:h1-1]-nh[staff,h2+1:])
         
     def checkStaffLines(self):
         """Return the max staff line blackness on both sides of the bar,
@@ -198,7 +199,8 @@ class Bar(object):
     @getter
     def getBarHCoords(self):
         M = self.getNeighbourhood().shape[1]
-        return nu.round(nu.array(((M-self.agent.getLineWidth())/2.,(M+self.agent.getLineWidth())/2.))).astype(nu.int)
+        #return nu.round(nu.array(((M-self.agent.getLineWidth())/2.,(M+self.agent.getLineWidth())/2.))).astype(nu.int)
+        return nu.array((nu.ceil((M-self.agent.getLineWidth())/2.),nu.floor((M+self.agent.getLineWidth())/2.))).astype(nu.int)
         #b,e = (nu.array((-.5,.5))+self.widthFactor/2.0)*self.agent.getLineWidth()
         #print('be',b,e)
         #return nu.array((nu.floor(b),nu.ceil(e))).astype(nu.int)

@@ -24,14 +24,21 @@ def selectOpenCloseBars(systems):
     std = nu.std(staffSym)
     begin = 0
     k = 0
-    for system in systems:
-        bc = system.getBarCandidates()
-        for b in bc:
-            ap = AgentPainter(b.getNeighbourhood())
-            ap.paintVLine(b.getBarHCoords()[0],alpha=.4,color=(255,0,0))
-            ap.paintVLine(b.getBarHCoords()[1],alpha=.4,color=(255,0,0))
-            ap.writeImage('b{0:04d}.png'.format(k))
-            k += 1
+    K = 3
+    print(m,std)
+    for i,system in enumerate(systems):
+        print([x.checkStaffSymmetry() for x in system.getBarCandidates()])
+        opener = [x for x in system.getBarCandidates()
+                  if x.checkStaffSymmetry()-m < -K*std]
+        closer = [x for x in system.getBarCandidates()
+                  if x.checkStaffSymmetry()-m > K*std]
+        print('s',i,opener,closer)
+        #for b in bc:
+        #    ap = AgentPainter(b.getNeighbourhood())
+        #    ap.paintVLine(b.getBarHCoords()[0],alpha=.4,color=(255,0,0))
+        #    ap.paintVLine(b.getBarHCoords()[1],alpha=.4,color=(255,0,0))
+        #    ap.writeImage('b{0:04d}.png'.format(k))
+        #    k += 1
 
 class ScoreImage(object):
     def __init__(self,fn):
