@@ -129,7 +129,7 @@ class System(object):
         #systemTopL = self.getRotator().rotate(self.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
         #systemBotL = self.getRotator().rotate(self.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
         vbins = 5
-        hbins = 5
+        hbins = 10
         overlap = .1 # of width
         hparts,lefts,rights = self.getImgHParts(hbins,overlap)
         agents = []
@@ -259,6 +259,20 @@ class System(object):
         print('chose {0} agents'.format(len(agents)))
         agents.sort(key=lambda x: x.getDrawMean()[1])
         
+        for j,a in enumerate(agents):
+            b = Bar(self,a)
+            ap1 = AgentPainter(b.getNeighbourhood())
+            #bu = b.findVerticalStaffLinePositions()
+            bf.append([j]+list(b.getFeatures()))
+            est.append([j]+list(1000*b.getEstimates()))
+            #print(bu)
+            #for i,u in enumerate(bu):
+            #    ap1.paintHLine(nu.floor(u),step=2,color=(255,0,0))
+            #    ap1.paintHLine(nu.ceil(u+self.getStaffLineWidth()),step=2,color=(255,0,0))
+            ap1.paintVLine(b.getBarHCoords()[0],step=2,color=(255,0,0))
+            ap1.paintVLine(b.getBarHCoords()[1],step=2,color=(255,0,0))
+            ap1.writeImage('bar-{0:03d}.png'.format(j))
+
         if True:
             return agents
 
@@ -274,19 +288,6 @@ class System(object):
             ap.writeImage(f0+'-sys{0:04d}.png'.format(int(self.getLowerLeft()[0])))
         bf = []
         est = []
-        for j,a in enumerate(agents):
-            b = Bar(self,a)
-            ap1 = AgentPainter(b.getNeighbourhood())
-            #bu = b.findVerticalStaffLinePositions()
-            bf.append([j]+list(b.getFeatures()))
-            est.append([j]+list(1000*b.getEstimates()))
-            #print(bu)
-            #for i,u in enumerate(bu):
-            #    ap1.paintHLine(nu.floor(u),step=2,color=(255,0,0))
-            #    ap1.paintHLine(nu.ceil(u+self.getStaffLineWidth()),step=2,color=(255,0,0))
-            ap1.paintVLine(b.getBarHCoords()[0],step=2,color=(255,0,0))
-            ap1.paintVLine(b.getBarHCoords()[1],step=2,color=(255,0,0))
-            ap1.writeImage('bar-{0:03d}.png'.format(j))
         nu.savetxt('/tmp/s.txt',nu.array(bf).astype(nu.int),fmt='%d')
         nu.savetxt('/tmp/est.txt',nu.array(est).astype(nu.int),fmt='%d')
         return agents

@@ -136,10 +136,10 @@ class ScoreImage(object):
         sysSegs = []
         k=0
         barCandidates = []
-        selectOpenCloseBars(self.getSystems())
-        sys.exit()
-        for i,system in enumerate(self.getSystems()):
-            barCandidates.append(system.getBarCandidates())
+        #selectOpenCloseBars(self.getSystems())
+        #sys.exit()
+        #for i,system in enumerate(self.getSystems()):
+        #    barCandidates.append(system.getBarCandidates())
 
         for i,system in enumerate(self.getSystems()):
             if True: #i==1: 
@@ -150,6 +150,18 @@ class ScoreImage(object):
                 sysSegs.append(system.getCorrectedImgSegment())
                 barAgents = [x.agent for x in system.getBars()]
                 barAgents.sort(key=lambda x: x.getDrawMean()[1])
+                
+                for j,b in enumerate(system.getBars()):
+                    ap1 = AgentPainter(b.getNeighbourhood())
+                    # print(bu)
+                    # for i,u in enumerate(bu):
+                    #     ap1.paintHLine(nu.floor(u),step=2,color=(255,0,0))
+                    #     ap1.paintHLine(nu.ceil(u+self.getStaffLineWidth()),step=2,color=(255,0,0))
+                    ap1.paintVLine(b.getBarHCoords()[0],step=2,color=(255,0,0))
+                    ap1.paintVLine(b.getBarHCoords()[1],step=2,color=(255,0,0))
+                    ap1.writeImage('bar-{0:03d}-{1:03d}.png'.format(i,j))
+                    if i == 2 and j == 5:
+                        b.write()
 
                 for j,a in enumerate(barAgents):
                     self.ap.register(a)
@@ -162,11 +174,12 @@ class ScoreImage(object):
                                      size=14,color=(255,0,0),alpha=.8)
                     k+=1
                     self.ap.drawAgent(a,int(b0),int(b1),system.getRotator())
-        bfname = os.path.join('/tmp/',os.path.splitext(os.path.basename(self.fn))[0]+'-barfeatures.txt')
-        nu.savetxt(bfname,nu.array(bf),fmt='%d')
-        self.ap.writeImage(self.fn)
+        #bfname = os.path.join('/tmp/',os.path.splitext(os.path.basename(self.fn))[0]+'-barfeatures.txt')
+        #nu.savetxt(bfname,nu.array(bf),fmt='%d')
+        #self.ap.writeImage(self.fn)
         if True:
             return True
+
         shapes = nu.array([ss.shape for ss in sysSegs])
         ssH = nu.sum(shapes[:,0])
         ssW = nu.max(shapes[:,1])

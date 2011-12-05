@@ -8,7 +8,23 @@ from imageUtil import getAntiAliasedImg
 from utils import Rotator
 from agent import AgentPainter
 
-def getVCenterOfBarline(bimg,kRange):
+def getHCenterAndWidth(bimg):
+    crossSection = nu.median(bimg,0)
+    avg = nu.average(nu.arange(len(crossSection)),weights=crossSection)
+    center = int(nu.round(avg))
+    total = nu.sum(crossSection)
+    half = (total-crossSection[center])/2.0
+    thr = .9
+    for left in xrange(center,0,-1):
+        if nu.sum(crossSection[left:center])/half > thr or crossSection[left] == 0:
+            left +=1
+            break
+    for right in xrange(center+1,len(crossSection)):
+        if nu.sum(crossSection[center+1:right])/half > thr or crossSection[right] == 0:
+            break
+    return nu.array(left,center,right)
+
+def getVCenterOfBarline(bimg,kRange,save=False):
     """
     This function finds the vertical center of bar lines, by
     computing the product of the upper and lower half around
@@ -16,15 +32,29 @@ def getVCenterOfBarline(bimg,kRange):
     correct, the product will be maximal/minimal (depending on
     the semantics of the color values).
     """
+    hhalf = 0
     N,M = bimg.shape
+    print(nu.max(bimg),nu.min(bimg))
+    rsums = nu.sum(bimg.astype(nu.float),1)
+    m = (nu.max(rsums)-nu.min(rsums))/2.0
+    rsums -= m
     kMin = int(N*(1-kRange)/2.0)
     kMax = int(N*(1+kRange)/2.0)
     scores = []
     krng = range(kMin,kMax+1)
     for k in krng:
         w = min(k,N-k-1)
-        scores.append(nu.sum(((bimg[k-w:k,:]-127)*(bimg[k+w:k:-1,:]-127)))/w)
-    return krng[nu.argmin(scores)]
+        #scores.append(nu.sum(((bimg[k-w:k,:]-127)*(bimg[k+w:k:-1,:]-127)))/w)
+        scores.append(nu.sum(rsums[k-w:k]*rsums[k+w:k:-1])/w)
+    if save:
+        nu.savetxt('/tmp/s.txt',nu.column_stack((nu.array(krng)-hhalf,scores)))
+        nu.savetxt('/tmp/img.txt',(rsums+m)/255.)
+        b,c = nu.histogram(bimg.reshape((-1,1)))
+        nu.savetxt('/tmp/h.txt',nu.column_stack((b,(c[:-1]+c[1:])/2.0)))
+        nu.savetxt('/tmp/ssums.txt',nu.sort((rsums+m)/255.))
+        nu.savetxt('/tmp/simg.txt',bimg[nu.argsort(rsums),:])
+        nu.savetxt('/tmp/med.txt',nu.median(bimg,0))
+    return krng[nu.argmax(scores)]
 
 class Bar(object):
     def __init__(self,system,agent):
@@ -34,7 +64,7 @@ class Bar(object):
         # proportion of the system img segment height that the
         # barline maybe shifted vertically to find the best fit
         self.kRange = .1
-        self.widthFactor = 4 # neighbourhood is widthFactor times barlineWidth wide
+        self.widthFactor = 8 # neighbourhood is widthFactor times barlineWidth wide
         self.heightFactor = 1.2 # neighbourhood is heightFactor times systemHeight high
 
     @getter
@@ -263,12 +293,47 @@ class Bar(object):
             return None
 
         cimg = getAntiAliasedImg(self.system.getCorrectedImgSegment(),xxr,yyr)
+        h0 = max(0,h1-w)
+        h3 = min(N,h2+w)
         vCorrection = getVCenterOfBarline(cimg,self.kRange)-hhalf
         # TODO: check if barneighbourhood is inside corrected system segment
         cimg = getAntiAliasedImg(self.system.getCorrectedImgSegment(),xxr+vCorrection,yyr)
         #print(cimg.shape)
         return cimg
     
+    @getter
+    def getNeighbourhoodNew(self):
+        cimg = self._getNeighbourhood()
+        hhalf = int(cimg.shape[1]/2.0)
+        left,hCorrection,right = getHCenterAndWidth(cimg)-hhalf
+        vCorrection = getVCenterOfBarline(cimg,self.kRange)-hhalf
+        cimg = self._getNeighbourhood(nu.array((vCorrection,hCorrection)))
+        
+    def _getNeighbourhood(self,midCorrection=None):
+        # approximate system top and bottom (based on global staff detection)
+        system0Top = self.system.getRotator().rotate(self.system.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
+        system1Bot = self.system.getRotator().rotate(self.system.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
+        sysHeight = (system1Bot-system0Top)
+        yTop = self.agent.getDrawMean()[1]+(system0Top-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.getAngle())
+        yBot = self.agent.getDrawMean()[1]+(system1Bot-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.getAngle())
+        middle = (nu.array((system0Top,yTop))+nu.array((system1Bot,yBot)))/2.0
+        if midCorrection != None:
+            middle += midCorrection
+        r = Rotator(self.agent.getAngle()-.5,middle,nu.array((0,0.)))
+        hhalf = int(sysHeight*self.heightFactor/2.)
+        whalf = int(2*self.system.getStaffLineDistance())
+        xx,yy = nu.mgrid[-hhalf:hhalf,-whalf:whalf]
+        xxr,yyr = r.derotate(xx,yy)
+        # check if derotated neighbourhood is inside image
+        minx,maxx,miny,maxy = nu.min(xxr),nu.max(xxr),nu.min(yyr),nu.max(yyr)
+        M,N = self.system.getCorrectedImgSegment().shape
+        if minx < 0 or miny < 0 or maxx >= M or maxy >= N:
+            return None
+        cimg = getAntiAliasedImg(self.system.getCorrectedImgSegment(),xxr,yyr)
+        return cimg
+
+    def write(self):
+        getVCenterOfBarline(self._getNeighbourhood(),self.kRange,True)
 
 if __name__ == '__main__':
     pass
