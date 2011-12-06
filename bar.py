@@ -4,7 +4,7 @@ import sys
 import numpy as nu
 from itertools import chain,product
 from utilities import getter
-from imageUtil import getAntiAliasedImg
+from imageUtil import getAntiAliasedImg,findValleys,findPeaks,smooth
 from utils import Rotator
 from agent import AgentPainter
 
@@ -14,15 +14,17 @@ def getHCenterAndWidth(bimg):
     center = int(nu.round(avg))
     total = nu.sum(crossSection)
     half = (total-crossSection[center])/2.0
-    thr = .9
+    thr = .95
     for left in xrange(center,0,-1):
-        if nu.sum(crossSection[left:center])/half > thr or crossSection[left] == 0:
+        if crossSection[left] == 0:
             left +=1
+            break
+        if nu.sum(crossSection[left:center])/half > thr:
             break
     for right in xrange(center+1,len(crossSection)):
         if nu.sum(crossSection[center+1:right])/half > thr or crossSection[right] == 0:
             break
-    return nu.array(left,center,right)
+    return nu.array((left,center,right))
 
 def getVCenterOfBarline(bimg,kRange,save=False):
     """
@@ -34,7 +36,6 @@ def getVCenterOfBarline(bimg,kRange,save=False):
     """
     hhalf = 0
     N,M = bimg.shape
-    print(nu.max(bimg),nu.min(bimg))
     rsums = nu.sum(bimg.astype(nu.float),1)
     m = (nu.max(rsums)-nu.min(rsums))/2.0
     rsums -= m
@@ -72,7 +73,6 @@ class Bar(object):
         #w = self.agent.getLineWidth()
         h1,h2 = self.getBarHCoords()
         w = h2-h1
-        print('w',w)
         h0 = h1-w
         h3 = h2+w
         staffTops = self.getVerticalStaffLinePositions()
@@ -93,6 +93,32 @@ class Bar(object):
                 'staffTops':staffTops,'staffBots':staffBots,
                 'staff':staffIdx,'interStaff':interStaffIdx}
 
+    def getBarPosition(self):
+        bimg = self.getNeighbourhoodNew().astype(nu.float)
+        N = int(nu.floor(bimg.shape[1]/2.0))
+        #hsums = nu.sum(bimg[:,:N],1)-nu.sum(bimg[:,-N:],1)
+        K = int(bimg.shape[0]/30)
+        hsumsl = smooth(nu.sum(bimg[:,:N],1)**2,K)
+        hsumsr = smooth(nu.sum(bimg[:,-N:],1)**2,K)
+        #hsumsl = nu.sum(bimg[:,:N],1)**2
+        #hsumsr = nu.sum(bimg[:,-N:],1)**2
+        al = nu.correlate(hsumsl, hsumsl, mode='same') 
+        ar = nu.correlate(hsumsr, hsumsr, mode='same') 
+        alr = nu.correlate(hsumsl, hsumsr, mode='same') 
+
+        #print('hsl',findPeaks(hsumsl))
+        #print('hsr',findPeaks(hsumsr))
+        #dl = nu.diff(findPeaks(hsumsl))
+        #dr = nu.diff(findPeaks(hsumsr))
+        #endiness = nu.abs(self.system.getStaffLineDistance()-nu.median(nu.diff(findPeaks(hsums))))
+        #startiness = nu.abs(self.system.getStaffLineDistance()-nu.median(nu.diff(findValleys(hsums))))
+        print('avg stld',self.system.getStaffLineDistance())
+        #print('medan peak dist',nu.median(dl),nu.median(dr))
+        #print('std peak dist',nu.std(dl),nu.std(dr))
+        return hsumsl,hsumsr,al,ar,alr
+        #print('med peak dist',nu.mean(nu.diff(findValleys(hsums))),nu.std(nu.diff(findValleys(hsums))))
+        #nu.savetxt('/tmp/s{0:03d}-b{1:03d}.txt'.format(i,j),nu.sum(bimg[:,:N],1)-nu.sum(bimg[:,-N:],1))
+        
     def checkInterStaffSymmetry(self,n=None):
         h0 = self.getFeatureIdx()['h0']
         h1 = self.getFeatureIdx()['h1']
@@ -227,7 +253,7 @@ class Bar(object):
         
         
     @getter
-    def getBarHCoords(self):
+    def getBarHCoordsOld(self):
         M = self.getNeighbourhood().shape[1]
         #return nu.round(nu.array(((M-self.agent.getLineWidth())/2.,(M+self.agent.getLineWidth())/2.))).astype(nu.int)
         return nu.array((nu.ceil((M-self.agent.getLineWidth())/2.),nu.floor((M+self.agent.getLineWidth())/2.))).astype(nu.int)
@@ -259,14 +285,11 @@ class Bar(object):
         return nu.append(staff0Tops+f0,staff1Tops+f1)
 
     @getter
-    def getNeighbourhood(self):
-
+    def getNeighbourhoodOld(self):
         # approximate system top and bottom (based on global staff detection)
         system0Top = self.system.getRotator().rotate(self.system.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
         system1Bot = self.system.getRotator().rotate(self.system.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
         sysHeight = (system1Bot-system0Top)
-        #print(system0Top)
-        #print(system1Bot)
 
         yTop = self.agent.getDrawMean()[1]+(system0Top-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.getAngle())
         yBot = self.agent.getDrawMean()[1]+(system1Bot-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.getAngle())
@@ -303,12 +326,34 @@ class Bar(object):
     
     @getter
     def getNeighbourhoodNew(self):
+        center,hPoints = self.getPoints()
+        if center == None:
+            return None
+        print('c, hp',center,hPoints)
+        cimg = self._getNeighbourhood(center)
+        if cimg == None:
+            return None
+        print('cimg1',cimg.shape)
+        return cimg
+
+    @getter
+    def getPoints(self):
         cimg = self._getNeighbourhood()
+        if cimg == None:
+            return None, None
+        vhalf = int(cimg.shape[0]/2.0)
         hhalf = int(cimg.shape[1]/2.0)
-        left,hCorrection,right = getHCenterAndWidth(cimg)-hhalf
-        vCorrection = getVCenterOfBarline(cimg,self.kRange)-hhalf
-        cimg = self._getNeighbourhood(nu.array((vCorrection,hCorrection)))
-        
+        left,hCenter,right = getHCenterAndWidth(cimg)
+        hCorrection = hCenter - hhalf
+        w = right-left
+        print('w,left,hCenter,right',w,left,hCenter,right,hCorrection,cimg.shape)
+        h0 = max(0,left-hCorrection-w)
+        h1 = left-hCorrection
+        h2 = right-hCorrection
+        h3 = min(cimg.shape[1],right-hCorrection+w)
+        vCorrection = getVCenterOfBarline(cimg[:,h0:h3],self.kRange)-vhalf
+        return nu.array((vCorrection,hCorrection)),nu.array((h0,h1,h2,h3))
+
     def _getNeighbourhood(self,midCorrection=None):
         # approximate system top and bottom (based on global staff detection)
         system0Top = self.system.getRotator().rotate(self.system.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]

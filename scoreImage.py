@@ -40,6 +40,30 @@ def selectOpenCloseBars(systems):
         #    ap.writeImage('b{0:04d}.png'.format(k))
         #    k += 1
 
+def selectOpenCloseBarsNew(systems):
+    for i,system in enumerate(systems):
+        bc = system.getBarCandidates()
+        print(len(bc))
+        for j,b in enumerate(system.getBarCandidates()):
+            ap = AgentPainter(b.getNeighbourhoodNew())
+            center,hPoints = b.getPoints()
+            bimg = b.getNeighbourhoodNew().astype(nu.float)
+            N = int(nu.floor(bimg.shape[0]/2.0))
+            hsl,hsr,al,ar,alr = b.getBarPosition()
+            hsl = hsl - nu.mean(hsl)
+            hsr = hsr - nu.mean(hsr)
+            fftl = nu.abs(nu.fft.rfft(hsl))[:N]
+            fftr = nu.abs(nu.fft.rfft(hsr))[:N]
+            print('ij p',i,j,nu.argmax(fftl),nu.argmax(fftr))
+            nu.savetxt('/tmp/s{0:03d}-b{1:03d}-al.txt'.format(i,j),fftl)
+            nu.savetxt('/tmp/s{0:03d}-b{1:03d}-ar.txt'.format(i,j),fftr)
+            #nu.savetxt('/tmp/s{0:03d}-b{1:03d}-alr.txt'.format(i,j),alr)
+            nu.savetxt('/tmp/s{0:03d}-b{1:03d}-r.txt'.format(i,j),hsr)
+            ap.paintVLine(hPoints[1],step=3,alpha=.5,color=(255,0,0))
+            ap.paintVLine(hPoints[2],step=3,alpha=.5,color=(255,0,0))
+            ap.writeImage('s{0:03d}-b{1:03d}.png'.format(i,j))
+
+
 class ScoreImage(object):
     def __init__(self,fn):
         self.fn = fn
@@ -136,11 +160,12 @@ class ScoreImage(object):
         sysSegs = []
         k=0
         barCandidates = []
-        #selectOpenCloseBars(self.getSystems())
-        #sys.exit()
+        selectOpenCloseBarsNew(self.getSystems())
+        
         #for i,system in enumerate(self.getSystems()):
         #    barCandidates.append(system.getBarCandidates())
-
+        #print(barCandidates)
+        sys.exit()
         for i,system in enumerate(self.getSystems()):
             if True: #i==1: 
                 sys.stdout.write('drawing system {0}\n'.format(i))

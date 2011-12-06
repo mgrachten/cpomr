@@ -126,11 +126,9 @@ class System(object):
         * run barline detection for different (slightly overlapping) segements
         * join agents (+merge)
         """
-        #systemTopL = self.getRotator().rotate(self.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
-        #systemBotL = self.getRotator().rotate(self.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
         vbins = 5
-        hbins = 10
-        overlap = .1 # of width
+        hbins = 3
+        overlap = .05 # of width
         hparts,lefts,rights = self.getImgHParts(hbins,overlap)
         agents = []
         for i,hpart in enumerate(hparts):
@@ -141,15 +139,11 @@ class System(object):
             print(a)
         agents.sort(key=lambda x: x.getDrawMean()[1])
 
-        #print('s',[x.shape for x in p])
         return agents
-        #hsums = self.getHSums()[int(systemTopL):int(systemBotL)]
-        #rows = selectColumns(hsums,bins)[0]+int(systemTopL) # sounds funny, change name of function       
         
     def getBarLinesPart(self,img,vbins,yoffset,rightBorder,j):
         BarAgent = makeAgentClass(targetAngle=.5,
                                   maxAngleDev=4/180.,
-                                  #maxError=1,
                                   maxError=self.getStaffLineWidth()/7.0,
                                   minScore=-2,
                                   yoffset=yoffset)
@@ -186,111 +180,9 @@ class System(object):
                     ap.register(a)
                     ap.drawAgent(a,-400,400)
                 ap.writeImage('system{0:04d}-part{1:04d}-{2:04d}-r{3:04d}.png'.format(self.n,j,i,r))
-            #assert len(set(agents).intersection(set(died))) == 0
-            #print('row',i)
             if len(agents) > 1:
                 agents.sort(key=lambda x: -x.score)
         return [a for a in agents if a.score > 1 and a.age > .1*K]
-
-    @getter
-    def getBarLinesOld(self):
-        agents = []
-        defBarAngle = .5 #(self.getStaffAngle()+.5)%1
-        print('default staff angle for this system',self.getStaffAngle())
-        #print('default bar angle for this system',defBarAngle)
-        #assert defBarAngle >= 0
-        print('slw',self.getStaffLineWidth())
-        BarAgent = makeAgentClass(targetAngle=defBarAngle,
-                                  maxAngleDev=4/180.,
-                                  #maxError=1,
-                                  maxError=self.getStaffLineWidth()/7.0,
-                                  minScore=-2,
-                                  offset=0)
-        systemTopL = self.getRotator().rotate(self.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
-        systemBotL = self.getRotator().rotate(self.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
-        bins = 5
-        hsums = self.getHSums()[int(systemTopL):int(systemBotL)]
-        rows = selectColumns(hsums,bins)[0]+int(systemTopL) # sounds funny, change name of function       
-        #rows = [p for p in selectColumns(self.getHSums(),bins)[0] if systemTopL <= p <= systemBotL] # sounds funny, change name of function
-        
-        finalStage = False
-        k = 0
-        ap = AgentPainter(self.getCorrectedImgSegment())
-        #draw = True
-        #draw = False
-        draw = self.dodraw
-        for i,r in enumerate(rows[:int(.15*len(rows))]):
-            died = []
-            agentsnew,d = assignToAgents(self.getCorrectedImgSegment()[r,:],agents,BarAgent,
-                                            self.getCorrectedImgSegment().shape[1],vert=r,fixAgents=finalStage)
-            died.extend(d)
-
-            if len(agents) > 2:
-                agentsnew,d = mergeAgents(agentsnew)
-                died.extend(d)
-            agents = agentsnew
-            #assert len(set(agents).intersection(set(died))) == 0
-            #print('row',i)
-            if len(agents) > 1:
-                agents.sort(key=lambda x: -x.score)
-
-            if draw:
-                ap.reset()
-                ap.paintHLine(r)
-                for a in died:
-                    #ap.drawAgent(a,-300,300)
-                    ap.unregister(a)
-                for j,a in enumerate(agents):
-                    print('{0} {1}'.format(j,a))
-                    ap.register(a)
-                    ap.drawAgent(a,-300,300)
-                f0,ext = os.path.splitext(self.scrImage.fn)
-                print(f0,ext)
-                ap.writeImage(f0+'-{0:04d}-r{1}'.format(i,r)+'.png')
-        #k = sortBarAgents(agents)
-        bAgents = [a for a in agents if a.score > 1]
-        bAgents.sort(key=lambda x: -x.score)
-        #bAgents = agents[:k]
-        meanScore = nu.mean([a.score for a in bAgents])
-        meanAge = nu.mean([a.age for a in bAgents])
-        for j,a in enumerate(agents):
-            print('{0} {1}'.format(j,a))
-        agents = [a for a in agents if a.score > .2*meanScore and a.age > .5*meanAge]
-        print('chose {0} agents'.format(len(agents)))
-        agents.sort(key=lambda x: x.getDrawMean()[1])
-        
-        for j,a in enumerate(agents):
-            b = Bar(self,a)
-            ap1 = AgentPainter(b.getNeighbourhood())
-            #bu = b.findVerticalStaffLinePositions()
-            bf.append([j]+list(b.getFeatures()))
-            est.append([j]+list(1000*b.getEstimates()))
-            #print(bu)
-            #for i,u in enumerate(bu):
-            #    ap1.paintHLine(nu.floor(u),step=2,color=(255,0,0))
-            #    ap1.paintHLine(nu.ceil(u+self.getStaffLineWidth()),step=2,color=(255,0,0))
-            ap1.paintVLine(b.getBarHCoords()[0],step=2,color=(255,0,0))
-            ap1.paintVLine(b.getBarHCoords()[1],step=2,color=(255,0,0))
-            ap1.writeImage('bar-{0:03d}.png'.format(j))
-
-        if True:
-            return agents
-
-        draw = False
-        if draw:
-            ap.reset()
-            for a in agents:
-                print(a)
-                ap.register(a)
-                ap.drawAgentGood(a,-300,300)
-            f0,ext = os.path.splitext(self.scrImage.fn)
-            print(f0,ext)
-            ap.writeImage(f0+'-sys{0:04d}.png'.format(int(self.getLowerLeft()[0])))
-        bf = []
-        est = []
-        nu.savetxt('/tmp/s.txt',nu.array(bf).astype(nu.int),fmt='%d')
-        nu.savetxt('/tmp/est.txt',nu.array(est).astype(nu.int),fmt='%d')
-        return agents
 
     def getNonTerminatingBarCandidates(self):
         bs = nu.array([b.checkStaffSymmetry() for b in self.getBarCandidates()])
@@ -324,17 +216,15 @@ class System(object):
             pass #print(b.getNeighbourhood())
         bars = [x for x in bars if x.getNeighbourhood() != None and x.checkStaffLines() > 50]
         #and x.checkStaffLines() > 50]# and x.checkInterStaffSymmetry()<200 ]
-        for i,b in enumerate(bars):
-            print(i,b.checkInterStaffSymmetry('s{0:03d}b{1:03d}.png'.format(self.n,i)),b.checkStaffSymmetry())
+        #for i,b in enumerate(bars):
+        #    print(i,b.checkInterStaffSymmetry('s{0:03d}b{1:03d}.png'.format(self.n,i)),b.checkStaffSymmetry())
         print('bars nonempty neighbourhood',len(bars))
         return bars
 
     @getter
     def getBarCandidates(self):
         bars = [Bar(self,x) for x in self.getBarLines()]
-        #bars = [x for x in bars if x.getNeighbourhood() != None and x.checkStaffLines() > 50 ]
-        bars = [x for x in bars if x.getNeighbourhood() != None]
-        return bars
+        return [x for x in bars if x.getNeighbourhoodNew() != None]
 
     def getSystemWidth(self):
         # this gets cut off from the width, to fit in the page rotated
