@@ -10,6 +10,8 @@ from agent import AgentPainter
 
 def getHCenterAndWidth(bimg):
     crossSection = nu.median(bimg,0)
+    if nu.sum(crossSection) <= 0:
+        return (None,None,None)
     avg = nu.average(nu.arange(len(crossSection)),weights=crossSection)
     center = int(nu.round(avg))
     total = nu.sum(crossSection)
@@ -96,28 +98,12 @@ class Bar(object):
     def getBarPosition(self):
         bimg = self.getNeighbourhoodNew().astype(nu.float)
         N = int(nu.floor(bimg.shape[1]/2.0))
-        #hsums = nu.sum(bimg[:,:N],1)-nu.sum(bimg[:,-N:],1)
-        K = int(bimg.shape[0]/30)
-        hsumsl = smooth(nu.sum(bimg[:,:N],1)**2,K)
-        hsumsr = smooth(nu.sum(bimg[:,-N:],1)**2,K)
-        #hsumsl = nu.sum(bimg[:,:N],1)**2
-        #hsumsr = nu.sum(bimg[:,-N:],1)**2
-        al = nu.correlate(hsumsl, hsumsl, mode='same') 
-        ar = nu.correlate(hsumsr, hsumsr, mode='same') 
-        alr = nu.correlate(hsumsl, hsumsr, mode='same') 
-
-        #print('hsl',findPeaks(hsumsl))
-        #print('hsr',findPeaks(hsumsr))
-        #dl = nu.diff(findPeaks(hsumsl))
-        #dr = nu.diff(findPeaks(hsumsr))
-        #endiness = nu.abs(self.system.getStaffLineDistance()-nu.median(nu.diff(findPeaks(hsums))))
-        #startiness = nu.abs(self.system.getStaffLineDistance()-nu.median(nu.diff(findValleys(hsums))))
-        print('avg stld',self.system.getStaffLineDistance())
-        #print('medan peak dist',nu.median(dl),nu.median(dr))
-        #print('std peak dist',nu.std(dl),nu.std(dr))
-        return hsumsl,hsumsr,al,ar,alr
-        #print('med peak dist',nu.mean(nu.diff(findValleys(hsums))),nu.std(nu.diff(findValleys(hsums))))
-        #nu.savetxt('/tmp/s{0:03d}-b{1:03d}.txt'.format(i,j),nu.sum(bimg[:,:N],1)-nu.sum(bimg[:,-N:],1))
+        hsumsl = nu.sum(bimg[:,:N],1)**2
+        hsumsr = nu.sum(bimg[:,-N:],1)**2
+        hsl = nu.abs(nu.diff(hsumsl - nu.mean(hsumsl)))
+        hsr = nu.abs(nu.diff(hsumsr - nu.mean(hsumsr)))
+        m = max(1,max(nu.max(hsl),nu.max(hsr)))
+        return nu.sum(hsl)/m,nu.sum(hsr)/m
         
     def checkInterStaffSymmetry(self,n=None):
         h0 = self.getFeatureIdx()['h0']
@@ -344,6 +330,8 @@ class Bar(object):
         vhalf = int(cimg.shape[0]/2.0)
         hhalf = int(cimg.shape[1]/2.0)
         left,hCenter,right = getHCenterAndWidth(cimg)
+        if left == None:
+            return None, None
         hCorrection = hCenter - hhalf
         w = right-left
         print('w,left,hCenter,right',w,left,hCenter,right,hCorrection,cimg.shape)

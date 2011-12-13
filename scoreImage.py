@@ -13,56 +13,21 @@ from staff import Staff
 from bar import Bar
 from itertools import chain
 
-def selectOpenCloseBars(systems):
-    """
-    """
-
-    staffSym = nu.array([x.checkStaffSymmetry() for x in 
-                         chain.from_iterable([system.getNonTerminatingBarCandidates() 
-                                              for system in systems])])
-    m = nu.mean(staffSym)
-    std = nu.std(staffSym)
-    begin = 0
-    k = 0
-    K = 3
-    print(m,std)
-    for i,system in enumerate(systems):
-        print([x.checkStaffSymmetry() for x in system.getBarCandidates()])
-        opener = [x for x in system.getBarCandidates()
-                  if x.checkStaffSymmetry()-m < -K*std]
-        closer = [x for x in system.getBarCandidates()
-                  if x.checkStaffSymmetry()-m > K*std]
-        print('s',i,opener,closer)
-        #for b in bc:
-        #    ap = AgentPainter(b.getNeighbourhood())
-        #    ap.paintVLine(b.getBarHCoords()[0],alpha=.4,color=(255,0,0))
-        #    ap.paintVLine(b.getBarHCoords()[1],alpha=.4,color=(255,0,0))
-        #    ap.writeImage('b{0:04d}.png'.format(k))
-        #    k += 1
-
 def selectOpenCloseBarsNew(systems):
+    lrdsums = []
     for i,system in enumerate(systems):
         bc = system.getBarCandidates()
         print(len(bc))
-        for j,b in enumerate(system.getBarCandidates()):
-            ap = AgentPainter(b.getNeighbourhoodNew())
-            center,hPoints = b.getPoints()
-            bimg = b.getNeighbourhoodNew().astype(nu.float)
-            N = int(nu.floor(bimg.shape[0]/2.0))
-            hsl,hsr,al,ar,alr = b.getBarPosition()
-            hsl = hsl - nu.mean(hsl)
-            hsr = hsr - nu.mean(hsr)
-            fftl = nu.abs(nu.fft.rfft(hsl))[:N]
-            fftr = nu.abs(nu.fft.rfft(hsr))[:N]
-            print('ij p',i,j,nu.argmax(fftl),nu.argmax(fftr))
-            nu.savetxt('/tmp/s{0:03d}-b{1:03d}-al.txt'.format(i,j),fftl)
-            nu.savetxt('/tmp/s{0:03d}-b{1:03d}-ar.txt'.format(i,j),fftr)
-            #nu.savetxt('/tmp/s{0:03d}-b{1:03d}-alr.txt'.format(i,j),alr)
-            nu.savetxt('/tmp/s{0:03d}-b{1:03d}-r.txt'.format(i,j),hsr)
-            ap.paintVLine(hPoints[1],step=3,alpha=.5,color=(255,0,0))
-            ap.paintVLine(hPoints[2],step=3,alpha=.5,color=(255,0,0))
-            ap.writeImage('s{0:03d}-b{1:03d}.png'.format(i,j))
-
+        sld = system.getStaffLineDistance()
+        lrdsums.extend([b.getBarPosition() for j,b in enumerate(system.getBarCandidates())])
+        #for j,b in enumerate(system.getBarCandidates()):
+        #    ap = AgentPainter(b.getNeighbourhoodNew())
+        #    center,hPoints = b.getPoints()
+    lrdsums = nu.array(lrdsums)
+    lrdsums = lrdsums/nu.median(lrdsums,0)
+    n = nu.column_stack((lrdsums,lrdsums[:,0]/lrdsums[:,1],lrdsums[:,1]/lrdsums[:,0]))
+    nu.savetxt('/tmp/s.txt',n)
+    print(n)
 
 class ScoreImage(object):
     def __init__(self,fn):
