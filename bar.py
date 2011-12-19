@@ -3,7 +3,7 @@
 import sys
 import numpy as nu
 from itertools import chain,product
-from utilities import getter
+from utilities import getter,cachedProperty
 from imageUtil import getAntiAliasedImg,findValleys,findPeaks,smooth
 from utils import Rotator
 from agent import AgentPainter
@@ -59,7 +59,23 @@ def getVCenterOfBarline(bimg,kRange,save=False):
         nu.savetxt('/tmp/med.txt',nu.median(bimg,0))
     return krng[nu.argmax(scores)]
 
-class Bar(object):
+class LeftBar(object):
+    def __init__(self,barCandidate):
+        self.bc = barCandidate
+
+class RightBar(object):
+    def __init__(self,barCandidate):
+        self.bc = barCandidate
+
+class MiddleBar(object):
+    def __init__(self,barCandidate):
+        self.bc = barCandidate
+    
+class BarCandidate(object):
+    LEFT = 0
+    MIDDLE = 1
+    RIGHT = 2
+    INVALID = 3
     def __init__(self,system,agent):
         self.agent = agent
         self.system = system
@@ -70,7 +86,7 @@ class Bar(object):
         self.widthFactor = 8 # neighbourhood is widthFactor times barlineWidth wide
         self.heightFactor = 1.2 # neighbourhood is heightFactor times systemHeight high
 
-    @getter
+    @cachedProperty
     def getFeatureIdx(self):
         #w = self.agent.getLineWidth()
         h1,h2 = self.getBarHCoords()
@@ -94,16 +110,6 @@ class Bar(object):
         return {'h0':h0,'h1':h1,'h2':h2,'h3':h3,
                 'staffTops':staffTops,'staffBots':staffBots,
                 'staff':staffIdx,'interStaff':interStaffIdx}
-
-    def getBarPosition(self):
-        bimg = self.getNeighbourhoodNew().astype(nu.float)
-        N = int(nu.floor(bimg.shape[1]/2.0))
-        hsumsl = nu.sum(bimg[:,:N],1)**2
-        hsumsr = nu.sum(bimg[:,-N:],1)**2
-        hsl = nu.abs(nu.diff(hsumsl - nu.mean(hsumsl)))
-        hsr = nu.abs(nu.diff(hsumsr - nu.mean(hsumsr)))
-        m = max(1,max(nu.max(hsl),nu.max(hsr)))
-        return nu.sum(hsl)/m,nu.sum(hsr)/m
         
     def checkInterStaffSymmetry(self,n=None):
         h0 = self.getFeatureIdx()['h0']
@@ -111,7 +117,7 @@ class Bar(object):
         h2 = self.getFeatureIdx()['h2']
         h3 = self.getFeatureIdx()['h3']
         interStaff = self.getFeatureIdx()['interStaff']
-        nh = self.getNeighbourhood()
+        nh = self.neighbourhood
         if n != None:
             ap = AgentPainter(nh)
             ml = nu.array([x for x in product(interStaff,nu.arange(h0,h1-1))])
@@ -121,14 +127,14 @@ class Bar(object):
             ap.writeImage(n)
         return nu.mean(nu.abs(nh.astype(nu.int)[interStaff,h0:h1-1]-nh[interStaff,h2+1:h3]))
 
-    @getter
+    @cachedProperty
     def checkStaffSymmetry(self):
         h0 = self.getFeatureIdx()['h0']
         h1 = self.getFeatureIdx()['h1']
         h2 = self.getFeatureIdx()['h2']
         h3 = self.getFeatureIdx()['h3']
         staff = self.getFeatureIdx()['staff']
-        nh = self.getNeighbourhood()
+        nh = self.neighbourhood
         print('nh',nh.shape,h0,h1,h2,h3)
         #return nu.mean(nh.astype(nu.int)[staff,h0:h1-1]-nh[staff,h2+1:h3])
         return nu.mean(nh.astype(nu.int)[staff,:h1-1]-nh[staff,h2+1:])
@@ -153,7 +159,7 @@ class Bar(object):
                                    chain.from_iterable([range(staffBots[i],staffBots[i]+w) 
                                                         for i in range(len(staffTops))])])
         interStaffIdx = self.getFeatureIdx()['interStaff']
-        nh = self.getNeighbourhood()
+        nh = self.neighbourhood
         staffLeft = nu.mean(nh[staffIdx,h0:h1])
         staffRight = nu.mean(nh[staffIdx,h2:h3])
 
@@ -170,7 +176,7 @@ class Bar(object):
         return max(staffLeft-max(aboveStaffLeft,belowStaffLeft),
                    staffRight-max(aboveStaffRight,belowStaffRight))
 
-    @getter
+    @cachedProperty
     def getFeatures(self):
         sd = int(nu.round(self.system.getStaffLineDistance()))
         h0 = self.getFeatureIdx()['h0']
@@ -181,7 +187,7 @@ class Bar(object):
         staffBots = self.getFeatureIdx()['staffBots']
         staffIdx = self.getFeatureIdx()['staff']
         interStaffIdx = self.getFeatureIdx()['interStaff']
-        nh = self.getNeighbourhood()
+        nh = self.neighbourhood
         
         barStaff0 = nu.mean(nh[staffTops[0]:staffBots[4],h1:h2])
         barStaff1 = nu.mean(nh[staffTops[5]:staffBots[9],h1:h2])
@@ -214,50 +220,16 @@ class Bar(object):
     # * increase impact of white in barStaff0 and barStaff1
     
 
-    @getter
-    def getEstimates(self):
-        return nu.array((self.getBarEstimate(),self.getLeftMostBarEstimate(),self.getRightMostBarEstimate()))
-
-    @getter
-    def getBarEstimate(self):
-        f = self.getFeatures()
-        black = (f[0]+f[1]+f[5]+f[4])/(4.*255)
-        white = (f[2]+f[3]+f[6]+f[7])/(4.*255)
-        return black-white
-
-    @getter
-    def getLeftMostBarEstimate(self):
-        f = self.getFeatures()
-        white = f[4]/255.
-        return 1-white
-
-    @getter
-    def getRightMostBarEstimate(self):
-        f = self.getFeatures()
-        white = f[5]/255.
-        return 1-white
-        
-        
-    @getter
-    def getBarHCoordsOld(self):
-        M = self.getNeighbourhood().shape[1]
-        #return nu.round(nu.array(((M-self.agent.getLineWidth())/2.,(M+self.agent.getLineWidth())/2.))).astype(nu.int)
-        return nu.array((nu.ceil((M-self.agent.getLineWidth())/2.),nu.floor((M+self.agent.getLineWidth())/2.))).astype(nu.int)
-        #b,e = (nu.array((-.5,.5))+self.widthFactor/2.0)*self.agent.getLineWidth()
-        #print('be',b,e)
-        #return nu.array((nu.floor(b),nu.ceil(e))).astype(nu.int)
-        #return nu.array((self.h1,self.h2)).astype(nu.int)
-
-    @getter
+    @cachedProperty
     def getVerticalStaffLinePositions(self):
         # approximate system top and bottom (based on global staff detection)
-        system0Top = self.system.getRotator().rotate(self.system.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
-        system1Bot = self.system.getRotator().rotate(self.system.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
+        system0Top = self.system.rotator.rotate(self.system.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
+        system1Bot = self.system.rotator.rotate(self.system.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
         sysHeight = (system1Bot-system0Top)
         hhalf = int(sysHeight*self.heightFactor/2.)
         sld = self.system.staffs[0].getStaffLineDistance()
         krng = range(-int(nu.ceil(.5*sld)),int(nu.ceil(.5*sld)))
-        hsums = nu.sum(self.getNeighbourhood(),1)
+        hsums = nu.sum(self.neighbourhood,1)
         hslw = int(nu.floor(.5*self.system.getStaffLineWidth()))
 
         inStaff = nu.arange(nu.round(self.system.getStaffLineWidth()))
@@ -270,61 +242,52 @@ class Bar(object):
         f1 = krng[nu.argmax([nu.sum(hsums[staff1Rows+k]) for k in krng])]
         return nu.append(staff0Tops+f0,staff1Tops+f1)
 
-    @getter
-    def getNeighbourhoodOld(self):
-        # approximate system top and bottom (based on global staff detection)
-        system0Top = self.system.getRotator().rotate(self.system.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
-        system1Bot = self.system.getRotator().rotate(self.system.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
-        sysHeight = (system1Bot-system0Top)
-
-        yTop = self.agent.getDrawMean()[1]+(system0Top-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.getAngle())
-        yBot = self.agent.getDrawMean()[1]+(system1Bot-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.getAngle())
-        middle = (nu.array((system0Top,yTop))+nu.array((system1Bot,yBot)))/2.0
-
-        h1 = nu.round(middle[1]-.5*self.agent.getLineWidth())
-        h2 = nu.round(middle[1]+.5*self.agent.getLineWidth())
-        w = h2-h1
-        whalf = int(nu.round(w*self.widthFactor/2.))
-        hhalf = int(sysHeight*self.heightFactor/2.)
-        
-        r = Rotator(self.agent.getAngle()-.5,middle,nu.array((0,0.)))
-        self.h1 = nu.round(r.rotate(nu.array([[middle[0],h1]]))[0,1]+whalf)
-        self.h2 = nu.round(r.rotate(nu.array([[middle[0],h2]]))[0,1]+whalf)
-        #mh1 = nu.round(r.derotate(nu.array([[0,-.5*self.agent.getLineWidth()]]))[0,1]+whalf)
-        xx,yy = nu.mgrid[-hhalf:hhalf,-whalf:whalf]
-        xxr,yyr = r.derotate(xx,yy)
-        # check if derotated neighbourhood is inside image
-        minx,maxx,miny,maxy = nu.min(xxr),nu.max(xxr),nu.min(yyr),nu.max(yyr)
-        M,N = self.system.getCorrectedImgSegment().shape
-        #print('w,h',middle)
-        #print('mm',minx,maxx,M,miny,maxy,N)
-        if minx < 0 or miny < 0 or maxx >= M or maxy >= N:
-            return None
-
-        cimg = getAntiAliasedImg(self.system.getCorrectedImgSegment(),xxr,yyr)
-        h0 = max(0,h1-w)
-        h3 = min(N,h2+w)
-        vCorrection = getVCenterOfBarline(cimg,self.kRange)-hhalf
-        # TODO: check if barneighbourhood is inside corrected system segment
-        cimg = getAntiAliasedImg(self.system.getCorrectedImgSegment(),xxr+vCorrection,yyr)
-        #print(cimg.shape)
-        return cimg
+    @cachedProperty
+    def estimatedType(self):
+        if self.approximateNeighbourhood == None:
+            return self.INVALID
+        lrmedian = nu.median(nu.array([x for y in [[bc.leftRightAbsDiffSums for bc in system.barCandidates
+                                                    if bc.approximateNeighbourhood != None] 
+                                       for system in self.system.scrImage.getSystems()] for x in y]),0)
+        statistic = self.leftRightAbsDiffSums/lrmedian
+        if statistic[0] < .5:
+            if statistic[1] < .5:
+                return self.INVALID
+            else:
+                return self.LEFT
+        else:
+            if statistic[1] < .5:
+                return self.RIGHT
+            else:
+                return self.MIDDLE
     
-    @getter
-    def getNeighbourhoodNew(self):
-        center,hPoints = self.getPoints()
-        if center == None:
-            return None
-        print('c, hp',center,hPoints)
-        cimg = self._getNeighbourhood(center)
-        if cimg == None:
-            return None
-        print('cimg1',cimg.shape)
-        return cimg
+    @cachedProperty
+    def leftRightAbsDiffSums(self):
+        """Returns the (normalized) sum(diff(abs)) of the 
+        horizontally summed left and right halves of the image.
+        This helps distinguish between within-system, left-border 
+        and right-border bars, respectively. The decision is best 
+        made after normalizing values over all bar candidates in 
+        the page.
+        """
+        assert self.approximateNeighbourhood != None
+        bimg = self.approximateNeighbourhood.astype(nu.float)
+        N = int(nu.floor(bimg.shape[1]/2.0))
+        hsumsl = nu.sum(bimg[:,:N],1)**2
+        hsumsr = nu.sum(bimg[:,-N:],1)**2
+        hsl = nu.abs(nu.diff(hsumsl - nu.mean(hsumsl)))
+        hsr = nu.abs(nu.diff(hsumsr - nu.mean(hsumsr)))
+        m = max(1,max(nu.max(hsl),nu.max(hsr)))
+        return nu.sum(hsl)/m,nu.sum(hsr)/m
 
-    @getter
-    def getPoints(self):
-        cimg = self._getNeighbourhood()
+    @cachedProperty
+    def neighbourhood(self):
+        print(self.estimatedType)
+        return self.approximateNeighbourhood
+
+    @cachedProperty
+    def points(self):
+        cimg = self.approximateNeighbourhood
         if cimg == None:
             return None, None
         vhalf = int(cimg.shape[0]/2.0)
@@ -342,31 +305,119 @@ class Bar(object):
         vCorrection = getVCenterOfBarline(cimg[:,h0:h3],self.kRange)-vhalf
         return nu.array((vCorrection,hCorrection)),nu.array((h0,h1,h2,h3))
 
+    @cachedProperty
+    def approximateNeighbourhood(self):
+        return self._getNeighbourhood()
+
     def _getNeighbourhood(self,midCorrection=None):
         # approximate system top and bottom (based on global staff detection)
-        system0Top = self.system.getRotator().rotate(self.system.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
-        system1Bot = self.system.getRotator().rotate(self.system.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
+        system0Top = self.system.rotator.rotate(self.system.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
+        system1Bot = self.system.rotator.rotate(self.system.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
         sysHeight = (system1Bot-system0Top)
-        yTop = self.agent.getDrawMean()[1]+(system0Top-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.getAngle())
-        yBot = self.agent.getDrawMean()[1]+(system1Bot-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.getAngle())
+        yTop = self.agent.getDrawMean()[1]+(system0Top-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.angle)
+        yBot = self.agent.getDrawMean()[1]+(system1Bot-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.angle)
         middle = (nu.array((system0Top,yTop))+nu.array((system1Bot,yBot)))/2.0
         if midCorrection != None:
             middle += midCorrection
-        r = Rotator(self.agent.getAngle()-.5,middle,nu.array((0,0.)))
+        r = Rotator(self.agent.angle-.5,middle,nu.array((0,0.)))
         hhalf = int(sysHeight*self.heightFactor/2.)
         whalf = int(2*self.system.getStaffLineDistance())
         xx,yy = nu.mgrid[-hhalf:hhalf,-whalf:whalf]
         xxr,yyr = r.derotate(xx,yy)
         # check if derotated neighbourhood is inside image
         minx,maxx,miny,maxy = nu.min(xxr),nu.max(xxr),nu.min(yyr),nu.max(yyr)
-        M,N = self.system.getCorrectedImgSegment().shape
+        M,N = self.system.correctedImgSegment.shape
         if minx < 0 or miny < 0 or maxx >= M or maxy >= N:
             return None
-        cimg = getAntiAliasedImg(self.system.getCorrectedImgSegment(),xxr,yyr)
+        cimg = getAntiAliasedImg(self.system.correctedImgSegment,xxr,yyr)
         return cimg
 
     def write(self):
-        getVCenterOfBarline(self._getNeighbourhood(),self.kRange,True)
+        getVCenterOfBarline(self.approximateNeighbourhood,self.kRange,True)
 
+    # @cachedProperty
+    # def getNeighbourhoodNew(self):
+    #     """obsolete"""
+    #     center,hPoints = self.points
+    #     if center == None:
+    #         return None
+    #     print('c, hp',center,hPoints)
+    #     cimg = self._getNeighbourhood(center)
+    #     if cimg == None:
+    #         return None
+    #     print('cimg1',cimg.shape)
+    #     return cimg
+
+    # @cachedProperty
+    # def getNeighbourhoodOld(self):
+    #     # approximate system top and bottom (based on global staff detection)
+    #     system0Top = self.system.rotator.rotate(self.system.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
+    #     system1Bot = self.system.rotator.rotate(self.system.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
+    #     sysHeight = (system1Bot-system0Top)
+
+    #     yTop = self.agent.getDrawMean()[1]+(system0Top-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.angle)
+    #     yBot = self.agent.getDrawMean()[1]+(system1Bot-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.angle)
+    #     middle = (nu.array((system0Top,yTop))+nu.array((system1Bot,yBot)))/2.0
+
+    #     h1 = nu.round(middle[1]-.5*self.agent.getLineWidth())
+    #     h2 = nu.round(middle[1]+.5*self.agent.getLineWidth())
+    #     w = h2-h1
+    #     whalf = int(nu.round(w*self.widthFactor/2.))
+    #     hhalf = int(sysHeight*self.heightFactor/2.)
+        
+    #     r = Rotator(self.agent.angle-.5,middle,nu.array((0,0.)))
+    #     self.h1 = nu.round(r.rotate(nu.array([[middle[0],h1]]))[0,1]+whalf)
+    #     self.h2 = nu.round(r.rotate(nu.array([[middle[0],h2]]))[0,1]+whalf)
+    #     #mh1 = nu.round(r.derotate(nu.array([[0,-.5*self.agent.getLineWidth()]]))[0,1]+whalf)
+    #     xx,yy = nu.mgrid[-hhalf:hhalf,-whalf:whalf]
+    #     xxr,yyr = r.derotate(xx,yy)
+    #     # check if derotated neighbourhood is inside image
+    #     minx,maxx,miny,maxy = nu.min(xxr),nu.max(xxr),nu.min(yyr),nu.max(yyr)
+    #     M,N = self.system.correctedImgSegment.shape
+    #     #print('w,h',middle)
+    #     #print('mm',minx,maxx,M,miny,maxy,N)
+    #     if minx < 0 or miny < 0 or maxx >= M or maxy >= N:
+    #         return None
+
+    #     cimg = getAntiAliasedImg(self.system.correctedImgSegment,xxr,yyr)
+    #     h0 = max(0,h1-w)
+    #     h3 = min(N,h2+w)
+    #     vCorrection = getVCenterOfBarline(cimg,self.kRange)-hhalf
+    #     # TODO: check if barneighbourhood is inside corrected system segment
+    #     cimg = getAntiAliasedImg(self.system.correctedImgSegment,xxr+vCorrection,yyr)
+    #     #print(cimg.shape)
+    #     return cimg
+
+    # @cachedProperty
+    # def getBarHCoordsOld(self):
+    #     M = self.getNeighbourhood().shape[1]
+    #     #return nu.round(nu.array(((M-self.agent.getLineWidth())/2.,(M+self.agent.getLineWidth())/2.))).astype(nu.int)
+    #     return nu.array((nu.ceil((M-self.agent.getLineWidth())/2.),nu.floor((M+self.agent.getLineWidth())/2.))).astype(nu.int)
+
+
+    # @cachedProperty
+    # def getEstimates(self):
+    #     return nu.array((self.getBarEstimate(),self.getLeftMostBarEstimate(),self.getRightMostBarEstimate()))
+
+    # @cachedProperty
+    # def getBarEstimate(self):
+    #     f = self.getFeatures()
+    #     black = (f[0]+f[1]+f[5]+f[4])/(4.*255)
+    #     white = (f[2]+f[3]+f[6]+f[7])/(4.*255)
+    #     return black-white
+
+    # @cachedProperty
+    # def getLeftMostBarEstimate(self):
+    #     f = self.getFeatures()
+    #     white = f[4]/255.
+    #     return 1-white
+
+    # @cachedProperty
+    # def getRightMostBarEstimate(self):
+    #     f = self.getFeatures()
+    #     white = f[5]/255.
+    #     return 1-white
+
+    
 if __name__ == '__main__':
     pass

@@ -3,11 +3,11 @@
 import sys,os
 import numpy as nu
 from utils import Rotator
-from utilities import getter
+from utilities import cachedProperty, getter
 from agent import makeAgentClass, AgentPainter, assignToAgents, mergeAgents
 from utils import selectColumns
 from imageUtil import getAntiAliasedImg
-from bar import Bar
+from bar import BarCandidate
 
 def sortBarAgents(agents):
     agents.sort(key=lambda x: -x.score)
@@ -93,11 +93,11 @@ class System(object):
                                       c)
         
     def getStaffAngle(self):
-        return nu.mean([s.getAngle() for s in self.staffs])
+        return nu.mean([s.angle for s in self.staffs])
 
-    @getter
-    def getHSums(self):
-        return nu.sum(self.getCorrectedImgSegment(),1)
+    @cachedProperty
+    def hSums(self):
+        return nu.sum(self.correctedImgSegment,1)
 
     @getter
     def getStaffLineWidth(self):
@@ -109,14 +109,14 @@ class System(object):
         return (self.staffs[0].getStaffLineDistance()+self.staffs[1].getStaffLineDistance())/2.0
 
     def getImgHParts(self,hbins,overlap):
-        M,N = self.getCorrectedImgSegment().shape
+        M,N = self.correctedImgSegment.shape
         overlapPix = int(overlap*N/2.)
         breaks = nu.linspace(0,N,hbins+1)
         lefts = breaks[:-1].copy()
         lefts[1:] -= overlapPix
         rights = breaks[1:].copy()
         rights[:-1] += overlapPix
-        return [self.getCorrectedImgSegment()[:,lefts[i]:rights[i]]
+        return [self.correctedImgSegment[:,lefts[i]:rights[i]]
                 for i in range(len(lefts))],lefts,rights
             
     @getter
@@ -148,12 +148,12 @@ class System(object):
                                   minScore=-2,
                                   yoffset=yoffset)
         agents = []
-        systemTopL = self.getRotator().rotate(self.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
-        systemBotL = self.getRotator().rotate(self.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
+        systemTopL = self.rotator.rotate(self.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
+        systemBotL = self.rotator.rotate(self.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
         hsums = nu.sum(img,1)[int(systemTopL):int(systemBotL)]
         rows = selectColumns(hsums,vbins)[0]+int(systemTopL) # sounds funny, change name of function       
 
-        ap = AgentPainter(self.getCorrectedImgSegment())
+        ap = AgentPainter(self.correctedImgSegment)
         ap.paintVLine(yoffset,step=4,color=(50,150,50))
         ap.paintVLine(rightBorder,step=4,color=(50,150,50))
         #draw = self.dodraw
@@ -162,7 +162,7 @@ class System(object):
         for i,r in enumerate(rows[:K]):
             died = []
             agentsnew,d = assignToAgents(img[r,:],agents,BarAgent,
-                                         self.getCorrectedImgSegment().shape[1],
+                                         self.correctedImgSegment.shape[1],
                                          vert=r,fixAgents=False)
             died.extend(d)
 
@@ -184,47 +184,50 @@ class System(object):
                 agents.sort(key=lambda x: -x.score)
         return [a for a in agents if a.score > 1 and a.age > .1*K]
 
-    def getNonTerminatingBarCandidates(self):
-        bs = nu.array([b.checkStaffSymmetry() for b in self.getBarCandidates()])
-        sidx = nu.argsort(bs)
-        if len(bs) > 2:
-            return list(nu.array(self.getBarCandidates())[sidx[1:-1]])
-        else:
-            return []
+    # def getNonTerminatingBarCandidates(self):
+    #     bs = nu.array([b.checkStaffSymmetry() for b in self.getBarCandidates()])
+    #     sidx = nu.argsort(bs)
+    #     if len(bs) > 2:
+    #         return list(nu.array(self.getBarCandidates())[sidx[1:-1]])
+    #     else:
+    #         return []
         
-    def selectOpeningClosingBars(self,bars):
-        # obsolete
-        bs = nu.array([b.checkStaffSymmetry() for b in bars])
-        opener = None
-        closer = None
-        if len(bs) < 4:
-            return (0,1)
-        sidx = nu.argsort(bs)
-        m = nu.mean(bs[sidx[1:-1]])
-        std = nu.std(bs[sidx[1:-1]])
-        if bs[sidx[0]]-m < 4*std:
-            opener = sidx[0]
-        if bs[sidx[-1]]-m > 4*std:
-            closer = sidx[-1]
-        return (opener,closer)
+    # def selectOpeningClosingBars(self,bars):
+    #     # obsolete
+    #     bs = nu.array([b.checkStaffSymmetry() for b in bars])
+    #     opener = None
+    #     closer = None
+    #     if len(bs) < 4:
+    #         return (0,1)
+    #     sidx = nu.argsort(bs)
+    #     m = nu.mean(bs[sidx[1:-1]])
+    #     std = nu.std(bs[sidx[1:-1]])
+    #     if bs[sidx[0]]-m < 4*std:
+    #         opener = sidx[0]
+    #     if bs[sidx[-1]]-m > 4*std:
+    #         closer = sidx[-1]
+    #     return (opener,closer)
 
-    @getter
+    # @getter
+    # def getBars(self):
+    #     bars = [Bar(self,x) for x in self.getBarLines()]
+    #     print('bars',len(bars))
+    #     for b in bars:
+    #         pass #print(b.getNeighbourhood())
+    #     bars = [x for x in bars if x.getNeighbourhood() != None and x.checkStaffLines() > 50]
+    #     #and x.checkStaffLines() > 50]# and x.checkInterStaffSymmetry()<200 ]
+    #     #for i,b in enumerate(bars):
+    #     #    print(i,b.checkInterStaffSymmetry('s{0:03d}b{1:03d}.png'.format(self.n,i)),b.checkStaffSymmetry())
+    #     print('bars nonempty neighbourhood',len(bars))
+    #     return bars
+
     def getBars(self):
-        bars = [Bar(self,x) for x in self.getBarLines()]
-        print('bars',len(bars))
-        for b in bars:
-            pass #print(b.getNeighbourhood())
-        bars = [x for x in bars if x.getNeighbourhood() != None and x.checkStaffLines() > 50]
-        #and x.checkStaffLines() > 50]# and x.checkInterStaffSymmetry()<200 ]
-        #for i,b in enumerate(bars):
-        #    print(i,b.checkInterStaffSymmetry('s{0:03d}b{1:03d}.png'.format(self.n,i)),b.checkStaffSymmetry())
-        print('bars nonempty neighbourhood',len(bars))
-        return bars
+        print([bc.estimatedType for bc in self.barCandidates])
 
-    @getter
-    def getBarCandidates(self):
-        bars = [Bar(self,x) for x in self.getBarLines()]
-        return [x for x in bars if x.getNeighbourhoodNew() != None]
+    @cachedProperty
+    def barCandidates(self):
+        bars = [BarCandidate(self,x) for x in self.getBarLines()]
+        return bars#[x for x in bars if x.neighbourhood != None]
 
     def getSystemWidth(self):
         # this gets cut off from the width, to fit in the page rotated
@@ -236,18 +239,17 @@ class System(object):
     def getSystemHeight(self):
         return self.getLowerLeft()[0]-self.getUpperLeft()[0]
         
-    @getter
-    def getRotator(self):
+    @cachedProperty
+    def rotator(self):
         return Rotator(self.getStaffAngle(),self.getLowerMid(),self.getLowerMidLocal())
 
-    @getter
-    def getCorrectedImgSegment(self):
+    @cachedProperty
+    def correctedImgSegment(self):
         halfSystemWidth = int((self.getSystemWidth()-1)/2)
-        r = self.getRotator()
         #xx,yy = nu.mgrid[0:self.getSystemHeight(),-halfSystemWidth:halfSystemWidth]
         xx,yy = nu.mgrid[0:self.getSystemHeight(),-halfSystemWidth:halfSystemWidth]
         yy += self.getLowerMidLocal()[1]
-        xxr,yyr = r.derotate(xx,yy)
+        xxr,yyr = self.rotator.derotate(xx,yy)
         return getAntiAliasedImg(self.scrImage.getImg(),xxr,yyr)
 
 if __name__ == '__main__':

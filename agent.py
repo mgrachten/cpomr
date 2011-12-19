@@ -161,7 +161,7 @@ class Agent(object):
 
     def __str__(self):
         return 'Agent: {id}; angle: {angle:0.4f} ({ta:0.4f}+{ad:0.4f}); error: {err:0.3f} age: {age}; npts: {pts}; score: {score}; mean: {mean}'\
-            .format(id=self.id,err=self.error,angle=self.getAngle(),ta=self.targetAngle,ad=self.angleDev,
+            .format(id=self.id,err=self.error,angle=self.angle,ta=self.targetAngle,ad=self.angleDev,
                     age=self.age,pts=self.points.shape[0],score=self.score,mean=self.getDrawMean())
     
     def getLineWidth(self):
@@ -174,8 +174,9 @@ class Agent(object):
         self.lineWidth.append(w)
         self.lw = nu.median(self.lineWidth)
         self.lwstd = nu.std(self.lineWidth)
-    
-    def getAngle(self):
+
+    @property
+    def angle(self):
         return self.targetAngle + self.angleDev
 
     def getDrawPoints(self):
@@ -185,15 +186,15 @@ class Agent(object):
 
     def getMiddle(self,M):
         "get Vertical position of agent at the horizontal center of the page of width M" 
-        x = self.mean[0]+(M/2.0-self.mean[1])*nu.tan(self.getAngle()*nu.pi)
+        x = self.mean[0]+(M/2.0-self.mean[1])*nu.tan(self.angle*nu.pi)
         return x
 
     def mergeable(self,other):
         if other.age > 1 and self.age > 1:
-            #e0 = getError(other.points-self.mean,self.getAngle())/float(other.points.shape[0])
-            #e1 = getError(self.points-other.mean,other.getAngle())/float(self.points.shape[0])
-            e0 = getError(other.getDrawPoints()-self.getDrawMean(),self.getAngle())/float(other.points.shape[0])
-            e1 = getError(self.getDrawPoints()-other.getDrawMean(),other.getAngle())/float(self.points.shape[0])
+            #e0 = getError(other.points-self.mean,self.angle)/float(other.points.shape[0])
+            #e1 = getError(self.points-other.mean,other.angle)/float(self.points.shape[0])
+            e0 = getError(other.getDrawPoints()-self.getDrawMean(),self.angle)/float(other.points.shape[0])
+            e1 = getError(self.getDrawPoints()-other.getDrawMean(),other.angle)/float(self.points.shape[0])
             #if 950 < self.mean[1] < 960 and 950 < other.mean[1] < 960:
             #    print('mergeable:')
             #    print(self)
@@ -208,7 +209,7 @@ class Agent(object):
         self.lineWidth = self.lineWidth+other.lineWidth
         self.mean = nu.mean(self.points,0)
         self.angleDev = ((tls(self.points-self.mean)-self.targetAngle)+.5)%1-.5
-        self.error = getError(self.points-self.mean,self.getAngle())/self.points.shape[0]
+        self.error = getError(self.points-self.mean,self.angle)/self.points.shape[0]
         self.age = max(self.age,other.age)
         self.score = self.score+other.score
 
@@ -219,7 +220,7 @@ class Agent(object):
         self.lineWidth = self.lineWidth+other.lineWidth
         self.mean = nu.mean(self.points,0)
         self.angleDev = ((tls(self.points-self.mean)-self.targetAngle)+.5)%1-.5
-        self.error = getError(self.points-self.mean,self.getAngle())/self.points.shape[0]
+        self.error = getError(self.points-self.mean,self.angle)/self.points.shape[0]
         self.age = max(self.age,other.age)
         self.score = self.score+other.score
         
@@ -257,7 +258,7 @@ class Agent(object):
         # offset of new line
         b = (ytilde-slope*xtilde)
         # special case 1: parallel lines
-        if slope == nu.tan(nu.pi*self.getAngle()):
+        if slope == nu.tan(nu.pi*self.angle):
             print('parallel',slope)
             return None
 
@@ -265,14 +266,14 @@ class Agent(object):
         if nu.isinf(slope):
             # x constant
             x = xy0[1]
-            y = nu.tan(nu.pi*self.getAngle())*(x - self.mean[1])+self.mean[0]
+            y = nu.tan(nu.pi*self.angle)*(x - self.mean[1])+self.mean[0]
             return nu.array((y,x))
         # special case 3: line undefined
         if nu.isnan(slope):
             # undefined slope, constant y
             return None
 
-        x = b/(nu.tan(nu.pi*self.getAngle())-slope)
+        x = b/(nu.tan(nu.pi*self.angle)-slope)
         r =  nu.array((slope*x+b,x))+self.mean
         return r
 
@@ -285,13 +286,13 @@ class Agent(object):
         return ((nu.arctan2(*((xy-self.mean)))/nu.pi)+1)%1
 
     def _getClosestAngle(self,a):
-        return nu.sort([(a+1)%1,self.getAngle()-self.maxAngleDev,
-                        self.getAngle()+self.maxAngleDev])[1]
+        return nu.sort([(a+1)%1,self.angle-self.maxAngleDev,
+                        self.angle+self.maxAngleDev])[1]
 
     def preparePointAdd(self,xy0,xy1=None):
         if xy1 != None:
-            error0 = nu.dot(xy0-self.mean,nu.array([nu.cos(self.getAngle()*nu.pi),-nu.sin(self.getAngle()*nu.pi)]))
-            error1 = nu.dot(xy1-self.mean,nu.array([nu.cos(self.getAngle()*nu.pi),-nu.sin(self.getAngle()*nu.pi)]))
+            error0 = nu.dot(xy0-self.mean,nu.array([nu.cos(self.angle*nu.pi),-nu.sin(self.angle*nu.pi)]))
+            error1 = nu.dot(xy1-self.mean,nu.array([nu.cos(self.angle*nu.pi),-nu.sin(self.angle*nu.pi)]))
             lw = 1+nu.sum((xy0-xy1)**2)**.5
             #print(self)
             #print('lw',lw,self.getLineWidth(),self.getLineWidthStd())
@@ -327,13 +328,13 @@ class Agent(object):
                 xyp1 = xy1
             aa0 = self._getAngleDistance(self._getAngle(xy0))
             aa1 = self._getAngleDistance(self._getAngle(xyp1))
-            angle = nu.sort([self.targetAngle+aa0,self.targetAngle+aa1,self.getAngle()])[1]
+            angle = nu.sort([self.targetAngle+aa0,self.targetAngle+aa1,self.angle])[1]
         else:
-            angle = self.getAngle()
+            angle = self.angle
         if nu.abs(self._getAngleDistance(angle)) > self.maxAngleDev:
             return self.maxError+1
-        # print('adjusting angle:',self.getAngle(),'to',angle)
-        anglePen = nu.abs(self.getAngle()-angle)
+        # print('adjusting angle:',self.angle,'to',angle)
+        anglePen = nu.abs(self.angle-angle)
         error0 = nu.dot((xy0-self.mean),nu.array([nu.cos(angle*nu.pi),-nu.sin(angle*nu.pi)]))
         if xy1 == None:
             return nu.abs(error0)+anglePen
@@ -423,8 +424,8 @@ class AgentPainter(object):
             c2 = nu.maximum(0,c-100)
             M,N = self.img.shape[1:]
             rng = nu.arange(rmin,rmax)
-            xy = nu.round(nu.column_stack((rng*nu.sin(agent.getAngle()*nu.pi)+agent.getDrawMean()[0],
-                                           rng*nu.cos(agent.getAngle()*nu.pi)+agent.getDrawMean()[1])))
+            xy = nu.round(nu.column_stack((rng*nu.sin(agent.angle*nu.pi)+agent.getDrawMean()[0],
+                                           rng*nu.cos(agent.angle*nu.pi)+agent.getDrawMean()[1])))
             idx = nu.logical_and(nu.logical_and(xy[:,0]>=0,xy[:,0]<M),
                                  nu.logical_and(xy[:,1]>=0,xy[:,1]<N))
             alpha = min(.8,max(.1,.5+float(agent.score)/max(1,agent.age)))
@@ -432,9 +433,9 @@ class AgentPainter(object):
             if xy.shape[0] > 0:
                 self.paintRav(xy,c2,alpha)
             #for r in range(rmin,rmax):
-            #    x = r*nu.sin(agent.getAngle()*nu.pi)+agent.getDrawMean()[0]
-            #    y = r*nu.cos(agent.getAngle()*nu.pi)+agent.getDrawMean()[1]
-            #    #print(r,agent.getAngle(),agent.getDrawMean(),x,y)
+            #    x = r*nu.sin(agent.angle*nu.pi)+agent.getDrawMean()[0]
+            #    y = r*nu.cos(agent.angle*nu.pi)+agent.getDrawMean()[1]
+            #    #print(r,agent.angle,agent.getDrawMean(),x,y)
             #    #print(x,y)
             #    if 0 <= x < M and 0 <= y < N:
             #        self.paint(nu.array((x,y)),c2,alpha)
@@ -456,8 +457,8 @@ class AgentPainter(object):
             M,N = self.img.shape[1:]
             #rng = nu.arange(rmin,rmax)
             rng = nu.arange(rmin,rmax,.95)
-            xy = nu.round(nu.column_stack((rng*nu.sin(agent.getAngle()*nu.pi)+agent.getDrawMean()[0],
-                                           rng*nu.cos(agent.getAngle()*nu.pi)+agent.getDrawMean()[1])))
+            xy = nu.round(nu.column_stack((rng*nu.sin(agent.angle*nu.pi)+agent.getDrawMean()[0],
+                                           rng*nu.cos(agent.angle*nu.pi)+agent.getDrawMean()[1])))
             if rotator:
                 xy = rotator.derotate(xy)
             idx = nu.logical_and(nu.logical_and(xy[:,0]>=0,xy[:,0]<M),

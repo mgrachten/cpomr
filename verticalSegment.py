@@ -2,7 +2,7 @@
 
 import sys,os
 import numpy as nu
-from utilities import getter
+from utilities import cachedProperty, getter
 from agent import assignToAgents, mergeAgents, makeAgentClass
 from imageUtil import normalize
 from utils import selectColumns
@@ -54,8 +54,8 @@ class VerticalSegment(object):
         self.draw = False
 
     def getVHSums(self):
-        vsum = len(nu.nonzero(self.getVSums())[0])
-        hsum = len(nu.nonzero(self.getHSums())[0])
+        vsum = len(nu.nonzero(self.vSums)[0])
+        hsum = len(nu.nonzero(self.hSums)[0])
         return vsum, hsum
 
     def flagNonStaff(self):
@@ -64,11 +64,11 @@ class VerticalSegment(object):
     def hasStaff(self):
         return self.containsStaff
         
-    @getter
-    def getStaffLines(self):
+    @cachedProperty
+    def staffLines(self):
         agents = []
-        defAngle = self.getAngle()
-        cols = selectColumns(self.getVSums(),self.colGroups)[0]
+        defAngle = self.angle
+        cols = selectColumns(self.vSums,self.colGroups)[0]
         StaffAgent = makeAgentClass(targetAngle=defAngle,
                                     maxAngleDev=2/180.,
                                     #maxError=.05,
@@ -116,18 +116,19 @@ class VerticalSegment(object):
     def getImgSegment(self):
         return self.scrImage.getImg()[self.top:self.bottom,:]
 
-    def getHSums(self):
-        return self.scrImage.getHSums()[self.top:self.bottom]
+    @property
+    def hSums(self):
+        return self.scrImage.hSums[self.top:self.bottom]
 
-    @getter
-    def getVSums(self):
+    @cachedProperty
+    def vSums(self):
         return nu.sum(self.getImgSegment(),0)
 
-    @getter
-    def getAngleHistogram(self):
+    @cachedProperty
+    def angleHistogram(self):
         #self.vSums = nu.sum(self.scrImage.getImg()[self.top:self.bottom,:],0)
         hparts = 3
-        cols = selectColumns(self.getVSums(),hparts)[0]
+        cols = selectColumns(self.vSums,hparts)[0]
         angles = []
         nColsToProcess = int(2*len(cols)/10)
         for j in range(nColsToProcess):
@@ -141,13 +142,13 @@ class VerticalSegment(object):
         #bins,lims = nu.histogram(angles,bins=self.nbins,range=histrange)
         return nu.histogram(angles,bins=self.nAngleBins,range=histrange)[0]
 
-    @getter
-    def getAngle(self):
+    @cachedProperty
+    def angle(self):
         """estimate the angle by taking the argmax of the angle histogram,
         weighted by the global angle histogram of the page.
         """
-        i = nu.argmax(self.getAngleHistogram()*self.scrImage.getWeights())
-        #nu.savetxt('/tmp/h{0}'.format(i),self.getAngleHistogram()*weights)
+        i = nu.argmax(self.angleHistogram*self.scrImage.getWeights())
+        #nu.savetxt('/tmp/h{0}'.format(i),self.angleHistogram*weights)
         return (float(self.maxAngle)/self.nAngleBins)-\
             self.maxAngle+i*2.0*self.maxAngle/self.nAngleBins
 

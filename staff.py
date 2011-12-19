@@ -24,7 +24,7 @@ def assessStaffLineAgents(iagents,M,nPerStaff):
     agents = sortStaffLineAgents(iagents,nPerStaff)
     for a in agents:
         print(a)
-    meansAngles = nu.array([(a.mean[0],a.mean[1],a.getAngle()) for a in agents])
+    meansAngles = nu.array([(a.mean[0],a.mean[1],a.angle) for a in agents])
     x = meansAngles[:,0]+(M/2-meansAngles[:,1])*nu.tan(meansAngles[:,2]*nu.pi)
     xs = nu.sort(x)
     dxs = nu.diff(xs)
@@ -52,9 +52,10 @@ class Staff(object):
             self.scrImage.ap.register(agent)
             self.scrImage.ap.drawAgentGood(agent,-self.scrImage.getWidth(),self.scrImage.getWidth())
 
-    def getAngle(self):
-        #print('staff angles',[(a.getAngle()+.5)%1-.5 for a in self.staffLineAgents])
-        return nu.mean([(a.getAngle()+.5)%1-.5 for a in self.staffLineAgents])
+    @property
+    def angle(self):
+        #print('staff angles',[(a.angle+.5)%1-.5 for a in self.staffLineAgents])
+        return nu.mean([(a.angle+.5)%1-.5 for a in self.staffLineAgents])
 
     @getter
     def getTopBottom(self):

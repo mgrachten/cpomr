@@ -2,7 +2,7 @@
 
 import sys,os
 import numpy as nu
-from utilities import getter
+from utilities import cachedProperty, getter
 from imageUtil import writeImageData, getPattern, findValleys, smooth, normalize
 from scipy.stats import distributions
 
@@ -10,24 +10,21 @@ from agent import AgentPainter
 from verticalSegment import VerticalSegment, identifyNonStaffSegments
 from system import System
 from staff import Staff
-from bar import Bar
+#from bar import BarCandidate
 from itertools import chain
 
 def selectOpenCloseBarsNew(systems):
+    """obsolete"""
     lrdsums = []
     for i,system in enumerate(systems):
-        bc = system.getBarCandidates()
-        print(len(bc))
+        bc = system.barCandidates
         sld = system.getStaffLineDistance()
-        lrdsums.extend([b.getBarPosition() for j,b in enumerate(system.getBarCandidates())])
-        #for j,b in enumerate(system.getBarCandidates()):
-        #    ap = AgentPainter(b.getNeighbourhoodNew())
-        #    center,hPoints = b.getPoints()
+        lrdsums.extend([b.getLeftRightAbsDiffSums() for j,b in enumerate(system.barCandidates)])
     lrdsums = nu.array(lrdsums)
     lrdsums = lrdsums/nu.median(lrdsums,0)
     n = nu.column_stack((lrdsums,lrdsums[:,0]/lrdsums[:,1],lrdsums[:,1]/lrdsums[:,0]))
     nu.savetxt('/tmp/s.txt',n)
-    print(n)
+    #print(n)
 
 class ScoreImage(object):
     def __init__(self,fn):
@@ -92,7 +89,7 @@ class ScoreImage(object):
             print('vs',i,vs.top,vs.bottom)
             print('Processing staff segment {0}'.format(i))
             #vs.draw = i==2
-            staffs.extend([Staff(self,s,vs.top,vs.bottom) for s in vs.getStaffLines()])
+            staffs.extend([Staff(self,s,vs.top,vs.bottom) for s in vs.staffLines])
         staffs = self.selectStaffs(staffs)
         for staff in staffs:
             print(staff)
@@ -125,45 +122,47 @@ class ScoreImage(object):
         sysSegs = []
         k=0
         barCandidates = []
-        selectOpenCloseBarsNew(self.getSystems())
-        
+        #selectOpenCloseBarsNew(self.getSystems())
+        for i,system in enumerate(self.getSystems()):
+            system.getBars()
         #for i,system in enumerate(self.getSystems()):
-        #    barCandidates.append(system.getBarCandidates())
+        #    barCandidates.append(system.barCandidates)
         #print(barCandidates)
-        sys.exit()
+        #sys.exit()
         for i,system in enumerate(self.getSystems()):
             if True: #i==1: 
                 sys.stdout.write('drawing system {0}\n'.format(i))
                 sys.stdout.flush()
                 #system.dodraw = True
                 system.draw()
-                sysSegs.append(system.getCorrectedImgSegment())
-                barAgents = [x.agent for x in system.getBars()]
+                sysSegs.append(system.correctedImgSegment)
+                barAgents = [x.agent for x in system.barCandidates]
                 barAgents.sort(key=lambda x: x.getDrawMean()[1])
                 
-                for j,b in enumerate(system.getBars()):
-                    ap1 = AgentPainter(b.getNeighbourhood())
+                system.getBars()
+                for j,b in enumerate(system.barCandidates):
+                    ap1 = AgentPainter(b.neighbourhood)
                     # print(bu)
                     # for i,u in enumerate(bu):
                     #     ap1.paintHLine(nu.floor(u),step=2,color=(255,0,0))
                     #     ap1.paintHLine(nu.ceil(u+self.getStaffLineWidth()),step=2,color=(255,0,0))
-                    ap1.paintVLine(b.getBarHCoords()[0],step=2,color=(255,0,0))
-                    ap1.paintVLine(b.getBarHCoords()[1],step=2,color=(255,0,0))
+                    #ap1.paintVLine(b.getBarHCoords()[0],step=2,color=(255,0,0))
+                    #ap1.paintVLine(b.getBarHCoords()[1],step=2,color=(255,0,0))
                     ap1.writeImage('bar-{0:03d}-{1:03d}.png'.format(i,j))
                     if i == 2 and j == 5:
                         b.write()
 
                 for j,a in enumerate(barAgents):
                     self.ap.register(a)
-                    b0 = system.getTop()-system.getRotator().derotate(a.getDrawMean().reshape((1,2)))[0,0]
-                    b1 = system.getBottom()-system.getRotator().derotate(a.getDrawMean().reshape((1,2)))[0,0]
-                    #self.ap.drawAgent(a,-300,300,system.getRotator())
+                    b0 = system.getTop()-system.rotator.derotate(a.getDrawMean().reshape((1,2)))[0,0]
+                    b1 = system.getBottom()-system.rotator.derotate(a.getDrawMean().reshape((1,2)))[0,0]
+                    #self.ap.drawAgent(a,-300,300,system.rotator)
                     self.ap.drawText(#'{0:02d}({1:02d}:{2:02d})'.format(k,i,j),
                         '{0:02d} ({1:02d})'.format(k,j),
                                      nu.array((system.getTop(),a.getDrawMean()[1])),
                                      size=14,color=(255,0,0),alpha=.8)
                     k+=1
-                    self.ap.drawAgent(a,int(b0),int(b1),system.getRotator())
+                    self.ap.drawAgent(a,int(b0),int(b1),system.rotator)
         #bfname = os.path.join('/tmp/',os.path.splitext(os.path.basename(self.fn))[0]+'-barfeatures.txt')
         #nu.savetxt(bfname,nu.array(bf),fmt='%d')
         #self.ap.writeImage(self.fn)
@@ -184,15 +183,15 @@ class ScoreImage(object):
         ap1.writeImage(self.fn.replace('.png','-corr.png'))
 
 
-    @getter
-    def getHSums(self):
+    @cachedProperty
+    def hSums(self):
         return nu.sum(self.getImg(),1)
 
     @getter
     def getVSegments(self):
         K = int(self.getHeight()/(2*self.typicalNrOfSystemPerPage))+1
-        sh = smooth(self.getHSums(),K)
-        #nu.savetxt('/tmp/vh1.txt',nu.column_stack((self.getHSums(),sh)))
+        sh = smooth(self.hSums,K)
+        #nu.savetxt('/tmp/vh1.txt',nu.column_stack((self.hSums,sh)))
         segBoundaries = nu.append(0,nu.append(findValleys(sh),self.getHeight()))
         vsegments = []
         for i in range(len(segBoundaries)-1):
@@ -215,7 +214,7 @@ class ScoreImage(object):
 
     @getter    
     def getWeights(self):
-        globalAngleHist = smooth(nu.sum(nu.array([s.getAngleHistogram() for s 
+        globalAngleHist = smooth(nu.sum(nu.array([s.angleHistogram for s 
                                                   in self.getVSegments()]),0),50)
         angles = nu.linspace(-self.maxAngle,self.maxAngle,self.nAnglebins+1)[:-1] +\
             (float(self.maxAngle)/self.nAnglebins)
