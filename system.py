@@ -221,8 +221,10 @@ class System(object):
     #     print('bars nonempty neighbourhood',len(bars))
     #     return bars
 
+    #@cachedProperty
     def getBars(self):
-        print([bc.estimatedType for bc in self.barCandidates])
+        return [bc for bc in self.barCandidates if bc.estimatedType != 3]
+        #print([bc.estimatedType for bc in self.barCandidates])
 
     @cachedProperty
     def barCandidates(self):

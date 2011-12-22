@@ -244,6 +244,12 @@ class BarCandidate(object):
 
     @cachedProperty
     def estimatedType(self):
+        """
+        Estimate whether this candidate is a LEFT, MIDDLE, RIGHT or INVALID bar. It
+        takes into account all barcandidates on the page, and for that it depends on
+        self.approximateNeighbourhood (watch out for cyclic dependencies)
+        """
+        
         if self.approximateNeighbourhood == None:
             return self.INVALID
         lrmedian = nu.median(nu.array([x for y in [[bc.leftRightAbsDiffSums for bc in system.barCandidates
