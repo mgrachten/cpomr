@@ -223,8 +223,10 @@ class System(object):
 
     #@cachedProperty
     def getBars(self):
-        return [bc for bc in self.barCandidates if bc.estimatedType != 3]
-        #print([bc.estimatedType for bc in self.barCandidates])
+        #return [bc for bc in self.barCandidates if bc.estimatedType != None]
+        bars = [bc.estimatedType(self.n,j,bc) for j,bc in 
+                enumerate([x for x in self.barCandidates if x.estimatedType != None])]
+        return bars
 
     @cachedProperty
     def barCandidates(self):

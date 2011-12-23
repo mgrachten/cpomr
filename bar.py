@@ -59,23 +59,26 @@ def getVCenterOfBarline(bimg,kRange,save=False):
         nu.savetxt('/tmp/med.txt',nu.median(bimg,0))
     return krng[nu.argmax(scores)]
 
-class LeftBar(object):
-    def __init__(self,barCandidate):
+class Bar(object):
+    def __init__(self,i,j,barCandidate):
         self.bc = barCandidate
+        self.i = i
+        self.j = j
+        nu.savetxt('/tmp/bar-{0:03d}-{1:03d}.txt'.format(self.i,self.j),self.bc.diffSums)
 
-class RightBar(object):
-    def __init__(self,barCandidate):
-        self.bc = barCandidate
+class LeftBar(Bar): 
+    pass
 
-class MiddleBar(object):
-    def __init__(self,barCandidate):
-        self.bc = barCandidate
-    
+class RightBar(Bar):
+    pass
+
+class MiddleBar(Bar):
+    pass
+
+class DoubleBar(Bar):
+    pass
+
 class BarCandidate(object):
-    LEFT = 0
-    MIDDLE = 1
-    RIGHT = 2
-    INVALID = 3
     def __init__(self,system,agent):
         self.agent = agent
         self.system = system
@@ -85,6 +88,37 @@ class BarCandidate(object):
         self.kRange = .1
         self.widthFactor = 8 # neighbourhood is widthFactor times barlineWidth wide
         self.heightFactor = 1.2 # neighbourhood is heightFactor times systemHeight high
+
+    @cachedProperty
+    def diffSums(self):
+        return nu.sum(nu.diff(self.neighbourhood.astype(nu.float),axis=1),0)
+
+    def getBarch(self):
+        peaks = findPeaks(self.diffSums)
+        valleys = findValleys(self.diffSums)
+        mid = self.neighbourhood.shape[1]/2.0
+        lpeaks = peaks[peaks <= mid]
+        rvalleys = valleys[valleys >= mid]
+        hi = lpeaks[nu.argmax(self.diffSums[lpeaks])]
+        lo = rvalleys[nu.argmin(self.diffSums[rvalleys])]
+        if hi > mid or lo < mid: 
+            print('non bar')
+            return False
+        hlmid = (hi+lo)/2.0
+        #npeaksleft = peaks[nu.logical_and(peaks>hi,peaks<hlmid)] # peak pos's on [hi,mid]
+        #nvalleysright = valleys[nu.logical_and(valleys>hlmid,valleys<lo)] # peak pos's on [hi,mid]
+        nvalleysleft = valleys[nu.logical_and(valleys>hi,valleys<hlmid)] 
+        npeaksright = peaks[nu.logical_and(peaks>hlmid,peaks<lo)] 
+        print(peaks)
+        print(valleys)
+        print(hi,mid,hlmid,lo)
+        print(len(nvalleysleft),len(npeaksright))
+        if len(nvalleysleft) == 0 and len(npeaksright) == 0:
+            print('normal')
+        elif len(nvalleysleft) == 1 and len(npeaksright) == 1:
+            print('double bar')
+        else:
+            print('non bar')
 
     @cachedProperty
     def getFeatureIdx(self):
@@ -251,21 +285,21 @@ class BarCandidate(object):
         """
         
         if self.approximateNeighbourhood == None:
-            return self.INVALID
+            return None
         lrmedian = nu.median(nu.array([x for y in [[bc.leftRightAbsDiffSums for bc in system.barCandidates
                                                     if bc.approximateNeighbourhood != None] 
                                        for system in self.system.scrImage.getSystems()] for x in y]),0)
         statistic = self.leftRightAbsDiffSums/lrmedian
         if statistic[0] < .5:
             if statistic[1] < .5:
-                return self.INVALID
+                return None
             else:
-                return self.LEFT
+                return LeftBar
         else:
             if statistic[1] < .5:
-                return self.RIGHT
+                return RightBar
             else:
-                return self.MIDDLE
+                return MiddleBar
     
     @cachedProperty
     def leftRightAbsDiffSums(self):

@@ -6,23 +6,29 @@ import numpy as nu
 from scipy import signal
 
 def getAntiAliasedImg(img,xx,yy):
-        xf = nu.floor(xx).astype(nu.int)
-        xc = nu.ceil(xx).astype(nu.int)
-        yf = nu.floor(yy).astype(nu.int)
-        yc = nu.ceil(yy).astype(nu.int)
-        wxc = xx%1
-        wxf = 1-wxc
-        wyc = yy%1
-        wyf = 1-wyc
-        return (((wxf+wyf)*img[xf,yf] + 
-                 (wxf+wyc)*img[xf,yc] + 
-                 (wxc+wyf)*img[xc,yf] + 
-                 (wxc+wyc)*img[xc,yc])/4.0).astype(nu.uint8)
+    xf = nu.floor(xx).astype(nu.int)
+    xc = nu.ceil(xx).astype(nu.int)
+    yf = nu.floor(yy).astype(nu.int)
+    yc = nu.ceil(yy).astype(nu.int)
+    wxc = xx%1
+    wxf = 1-wxc
+    wyc = yy%1
+    wyf = 1-wyc
+    return (((wxf+wyf)*img[xf,yf] +
+	     (wxf+wyc)*img[xf,yc] +
+	     (wxc+wyf)*img[xc,yf] +
+	     (wxc+wyc)*img[xc,yc])/4.0).astype(nu.uint8)
 
 def smooth(x,k):
     return nu.convolve(x,signal.hanning(k),'same')
 
-def findPeaks(v):
+def findPeaks(x):
+    return nu.where(nu.diff(nu.sign(nu.diff(x)))<0)[0]+1
+
+def findValleys(x):
+    return nu.where(nu.diff(nu.sign(nu.diff(x)))>0)[0]+1
+
+def findPeaksOld(v):
     """find the peaks in a smooth curve
     """
     x = nu.zeros(len(v))
@@ -31,7 +37,7 @@ def findPeaks(v):
     peaks = nu.nonzero(x)[0]
     return peaks
 
-def findValleys(v):
+def findValleysOld(v):
     """find the valleys in a smooth curve
     """
     x = nu.zeros(len(v))
@@ -47,7 +53,7 @@ def normalize(x):
     #assert xmin < xmax
     if xmin < xmax:
         return (nu.array(x,nu.float32)-xmin)/(xmax-xmin)
-    else: 
+    else:
         return nu.ones(x.shape,nu.float32)
 
 def makeDiffImage(img):
@@ -110,7 +116,7 @@ def getPattern(filename,useMask=True,alphaAsMaskIfAvailable=True):
     s = tuple(reversed(imageFh.size))
 
     fimg = nu.array(imageFh.getdata(),nu.uint8).reshape((s[0]*s[1],-1))
-        
+
     #nch = img.shape[1]
     nch = len(imageFh.mode)
     hasAlpha = imageFh.mode[-1] == 'A'
@@ -176,7 +182,7 @@ def writeImageDataOld(filename,data,color=(1,1,1),alphaChannel=None):
     #img = Image.new('RGBA',size)
     dmin = nu.min(data)
     dmax = nu.max(data)
-    if dmin >= 0 and dmax <= 1: 
+    if dmin >= 0 and dmax <= 1:
         ndata = data
     else:
         ndata = (data-dmin)/(dmax-dmin)

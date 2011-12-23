@@ -126,9 +126,9 @@ class ScoreImage(object):
         #for i,system in enumerate(self.getSystems()):
         #    system.getBars()
         #sys.exit()
-        for i,system in enumerate(self.getSystems()):
+        for system in self.getSystems():
             if True: #i==1: 
-                sys.stdout.write('drawing system {0}\n'.format(i))
+                sys.stdout.write('drawing system {0}\n'.format(system.n))
                 sys.stdout.flush()
                 #system.dodraw = True
                 #system.draw()
@@ -138,18 +138,18 @@ class ScoreImage(object):
                 #barAgents.sort(key=lambda x: x.getDrawMean()[1])
                 
                 #system.getBars()
-                for j,b in enumerate(system.getBars()):
-                    ap1 = AgentPainter(b.neighbourhood)
+                for b in system.getBars():
+                    ap1 = AgentPainter(b.bc.neighbourhood)
+                    b.bc.getBarch()
+                    print(b.i,b.j)
                     # print(bu)
                     # for i,u in enumerate(bu):
                     #     ap1.paintHLine(nu.floor(u),step=2,color=(255,0,0))
                     #     ap1.paintHLine(nu.ceil(u+self.getStaffLineWidth()),step=2,color=(255,0,0))
                     #ap1.paintVLine(b.getBarHCoords()[0],step=2,color=(255,0,0))
                     #ap1.paintVLine(b.getBarHCoords()[1],step=2,color=(255,0,0))
-                    ap1.writeImage('bar-{0:03d}-{1:03d}.png'.format(i,j))
-                    if i == 2 and j == 5:
-                        b.write()
-                        
+                    ap1.writeImage('bar-{0:03d}-{1:03d}.png'.format(b.i,b.j))
+                         
                 # for j,a in enumerate(barAgents):
                 #     self.ap.register(a)
                 #     b0 = system.getTop()-system.rotator.derotate(a.getDrawMean().reshape((1,2)))[0,0]
