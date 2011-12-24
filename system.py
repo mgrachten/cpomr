@@ -223,9 +223,24 @@ class System(object):
 
     #@cachedProperty
     def getBars(self):
-        #return [bc for bc in self.barCandidates if bc.estimatedType != None]
+        barCandidates = [bc for bc in self.barCandidates if bc.estimatedType != None]
+        info = [bc.getBarch() for bc in barCandidates]
+        btypes = [x[0] for x in info]
+        # detect if left or right end of candidates coincide
+        leftMid = nu.array([x[1] for x in info])
+        rightMid = nu.array([x[2] for x in info])
+        leftDiff = nu.diff(leftMid,axis=0)
+        rightDiff = nu.diff(rightMid,axis=0)
+        lDist = nu.sum(leftDiff**2,1)**.5
+        rDist = nu.sum(rightDiff**2,1)**.5
+        
+        print('ldist')
+        print(lDist)
+        print('rdist')
+        print(rDist)
         bars = [bc.estimatedType(self.n,j,bc) for j,bc in 
-                enumerate([x for x in self.barCandidates if x.estimatedType != None])]
+                enumerate([x for x in barCandidates if x.estimatedType != None])]
+        
         return bars
 
     @cachedProperty

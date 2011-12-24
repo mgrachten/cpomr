@@ -88,6 +88,7 @@ class BarCandidate(object):
         self.kRange = .1
         self.widthFactor = 8 # neighbourhood is widthFactor times barlineWidth wide
         self.heightFactor = 1.2 # neighbourhood is heightFactor times systemHeight high
+        self.rotator = None
 
     @cachedProperty
     def diffSums(self):
@@ -101,27 +102,21 @@ class BarCandidate(object):
         rvalleys = valleys[valleys >= mid]
         hi = lpeaks[nu.argmax(self.diffSums[lpeaks])]
         lo = rvalleys[nu.argmin(self.diffSums[rvalleys])]
-        if hi > mid or lo < mid: 
-            print('non bar')
-            return False
         hlmid = (hi+lo)/2.0
-        #npeaksleft = peaks[nu.logical_and(peaks>hi,peaks<hlmid)] # peak pos's on [hi,mid]
-        #nvalleysright = valleys[nu.logical_and(valleys>hlmid,valleys<lo)] # peak pos's on [hi,mid]
         nvalleysleft = valleys[nu.logical_and(valleys>hi,valleys<hlmid)] 
         npeaksright = peaks[nu.logical_and(peaks>hlmid,peaks<lo)] 
-        print(peaks)
-        print(valleys)
-        print(hi,mid,hlmid,lo)
-        print(len(nvalleysleft),len(npeaksright))
+        assert self.rotator != None
+        leftMid,rightMid = self.rotator.derotate(nu.array([[0.0,hi],[0.0,lo]]))
+        print(leftMid,rightMid)
         if len(nvalleysleft) == 0 and len(npeaksright) == 0:
-            print('normal')
+            return 'normal',leftMid,rightMid
         elif len(nvalleysleft) == 1 and len(npeaksright) == 1:
-            print('double bar')
+            return 'double_bar',leftMid,rightMid
         else:
-            print('non bar')
+            return 'non_bar',leftMid,rightMid
 
     @cachedProperty
-    def getFeatureIdx(self):
+    def featureIdx(self):
         #w = self.agent.getLineWidth()
         h1,h2 = self.getBarHCoords()
         w = h2-h1
@@ -349,6 +344,10 @@ class BarCandidate(object):
     def approximateNeighbourhood(self):
         return self._getNeighbourhood()
 
+    @cachedProperty
+    def rotator(self):
+        return self.rotator
+        
     def _getNeighbourhood(self,midCorrection=None):
         # approximate system top and bottom (based on global staff detection)
         system0Top = self.system.rotator.rotate(self.system.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
@@ -359,11 +358,12 @@ class BarCandidate(object):
         middle = (nu.array((system0Top,yTop))+nu.array((system1Bot,yBot)))/2.0
         if midCorrection != None:
             middle += midCorrection
-        r = Rotator(self.agent.angle-.5,middle,nu.array((0,0.)))
+        #r = Rotator(self.agent.angle-.5,middle,nu.array((0,0.)))
+        self.rotator = Rotator(self.agent.angle-.5,middle,nu.array((0,0.)))
         hhalf = int(sysHeight*self.heightFactor/2.)
         whalf = int(2*self.system.getStaffLineDistance())
         xx,yy = nu.mgrid[-hhalf:hhalf,-whalf:whalf]
-        xxr,yyr = r.derotate(xx,yy)
+        xxr,yyr = self.rotator.derotate(xx,yy)
         # check if derotated neighbourhood is inside image
         minx,maxx,miny,maxy = nu.min(xxr),nu.max(xxr),nu.min(yyr),nu.max(yyr)
         M,N = self.system.correctedImgSegment.shape
