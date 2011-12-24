@@ -238,6 +238,8 @@ class System(object):
         print(lDist)
         print('rdist')
         print(rDist)
+        print('lw')
+        print([bc.agent.getLineWidth() for bc in barCandidates])
         bars = [bc.estimatedType(self.n,j,bc) for j,bc in 
                 enumerate([x for x in barCandidates if x.estimatedType != None])]
         

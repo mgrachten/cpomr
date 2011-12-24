@@ -97,23 +97,26 @@ class BarCandidate(object):
     def getBarch(self):
         peaks = findPeaks(self.diffSums)
         valleys = findValleys(self.diffSums)
-        mid = self.neighbourhood.shape[1]/2.0
+        #mid = self.neighbourhood.shape[1]/2.0
+        mid = self.diffSums.shape[0]/2.0
         lpeaks = peaks[peaks <= mid]
         rvalleys = valleys[valleys >= mid]
         hi = lpeaks[nu.argmax(self.diffSums[lpeaks])]
         lo = rvalleys[nu.argmin(self.diffSums[rvalleys])]
-        hlmid = (hi+lo)/2.0
-        nvalleysleft = valleys[nu.logical_and(valleys>hi,valleys<hlmid)] 
-        npeaksright = peaks[nu.logical_and(peaks>hlmid,peaks<lo)] 
+        npeaks = peaks[nu.logical_and(peaks>hi,peaks<lo)] 
+        nvalleys = valleys[nu.logical_and(valleys>hi,valleys<lo)] 
         assert self.rotator != None
         leftMid,rightMid = self.rotator.derotate(nu.array([[0.0,hi],[0.0,lo]]))
-        print(leftMid,rightMid)
-        if len(nvalleysleft) == 0 and len(npeaksright) == 0:
-            return 'normal',leftMid,rightMid
-        elif len(nvalleysleft) == 1 and len(npeaksright) == 1:
-            return 'double_bar',leftMid,rightMid
-        else:
-            return 'non_bar',leftMid,rightMid
+        #print(peaks,valleys)
+        #print(self.diffSums.shape,self.neighbourhood.shape)
+        #print(hi,mid,lo)
+        #print(leftMid,rightMid)
+        if len(nvalleys) == len(npeaks):
+            if len(nvalleys) == 0:
+                return 'normal',leftMid,rightMid
+            elif len(nvalleys) == 1:
+                return 'double_bar',leftMid,rightMid
+        return 'non_bar',leftMid,rightMid
 
     @cachedProperty
     def featureIdx(self):
