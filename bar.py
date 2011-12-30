@@ -79,6 +79,10 @@ class DoubleBar(Bar):
     pass
 
 class BarCandidate(object):
+    BAR = 0
+    DOUBLE_BAR = 1
+    INVALID = 2
+    
     def __init__(self,system,agent):
         self.agent = agent
         self.system = system
@@ -89,12 +93,13 @@ class BarCandidate(object):
         self.widthFactor = 8 # neighbourhood is widthFactor times barlineWidth wide
         self.heightFactor = 1.2 # neighbourhood is heightFactor times systemHeight high
         self.rotator = None
-
+        
     @cachedProperty
     def diffSums(self):
         return nu.sum(nu.diff(self.neighbourhood.astype(nu.float),axis=1),0)
 
-    def getBarch(self):
+    @cachedProperty
+    def barInfo(self):
         peaks = findPeaks(self.diffSums)
         valleys = findValleys(self.diffSums)
         #mid = self.neighbourhood.shape[1]/2.0
@@ -107,16 +112,12 @@ class BarCandidate(object):
         nvalleys = valleys[nu.logical_and(valleys>hi,valleys<lo)] 
         assert self.rotator != None
         leftMid,rightMid = self.rotator.derotate(nu.array([[0.0,hi],[0.0,lo]]))
-        #print(peaks,valleys)
-        #print(self.diffSums.shape,self.neighbourhood.shape)
-        #print(hi,mid,lo)
-        #print(leftMid,rightMid)
         if len(nvalleys) == len(npeaks):
             if len(nvalleys) == 0:
-                return 'normal',leftMid,rightMid
+                return self.BAR,leftMid,rightMid
             elif len(nvalleys) == 1:
-                return 'double_bar',leftMid,rightMid
-        return 'non_bar',leftMid,rightMid
+                return self.DOUBLE_BAR,leftMid,rightMid
+        return self.INVALID,leftMid,rightMid
 
     @cachedProperty
     def featureIdx(self):
@@ -310,9 +311,16 @@ class BarCandidate(object):
         """
         assert self.approximateNeighbourhood != None
         bimg = self.approximateNeighbourhood.astype(nu.float)
+        w = .3*self.system.getStaffLineDistance()
         N = int(nu.floor(bimg.shape[1]/2.0))
-        hsumsl = nu.sum(bimg[:,:N],1)**2
-        hsumsr = nu.sum(bimg[:,-N:],1)**2
+        l = int(max(0,N-.5*self.agent.getLineWidth()))
+        r = int(max(0,l-w))
+        #hsumsl = nu.sum(bimg[:,:N],1)**2
+        hsumsl = nu.sum(bimg[:,l:r],1)**2
+        l = int(nu.round(min(bimg.shape[1],N+.5*self.agent.getLineWidth())))
+        r = int(nu.round(min(bimg.shape[1],l+w)))
+        #hsumsr = nu.sum(bimg[:,-N:],1)**2
+        hsumsr = nu.sum(bimg[:,l:r],1)**2
         hsl = nu.abs(nu.diff(hsumsl - nu.mean(hsumsl)))
         hsr = nu.abs(nu.diff(hsumsr - nu.mean(hsumsr)))
         m = max(1,max(nu.max(hsl),nu.max(hsr)))

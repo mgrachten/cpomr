@@ -10,7 +10,7 @@ from agent import AgentPainter
 from verticalSegment import VerticalSegment, identifyNonStaffSegments
 from system import System
 from staff import Staff
-#from bar import BarCandidate
+from bar import BarCandidate as bc
 from itertools import chain
 
 def selectOpenCloseBarsNew(systems):
@@ -133,10 +133,10 @@ class ScoreImage(object):
                 #barAgents = [x.agent for x in system.barCandidates]
                 #barAgents = [x.agent for x in system.getBars()]
                 #barAgents.sort(key=lambda x: x.getDrawMean()[1])
-                
-                for b in system.getBars():
+                system.getBars()
+                for b in []: #system.getBars():
                     ap1 = AgentPainter(b.bc.neighbourhood)
-                    btype,d0,d1 = b.bc.getBarch()
+                    btype,d0,d1 = b.bc.barInfo
                     print(b.i,b.j)
                     # print(bu)
                     # for i,u in enumerate(bu):
@@ -144,7 +144,10 @@ class ScoreImage(object):
                     #     ap1.paintHLine(nu.ceil(u+self.getStaffLineWidth()),step=2,color=(255,0,0))
                     #ap1.paintVLine(b.getBarHCoords()[0],step=2,color=(255,0,0))
                     #ap1.paintVLine(b.getBarHCoords()[1],step=2,color=(255,0,0))
-                    ap1.writeImage('bar-{0:03d}-{1:03d}-{2}.png'.format(b.i,b.j,btype))
+                    ap1.writeImage('bar-{0:03d}-{1:03d}-{2}.png'.format(b.i,b.j,
+                                                                        {bc.BAR:'bar',
+                                                                         bc.DOUBLE_BAR:'double',
+                                                                         bc.INVALID:'non_bar'}[btype]))
                          
                 # for j,a in enumerate(barAgents):
                 #     self.ap.register(a)
