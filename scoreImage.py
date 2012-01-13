@@ -134,20 +134,6 @@ class ScoreImage(object):
                 #barAgents = [x.agent for x in system.getBars()]
                 #barAgents.sort(key=lambda x: x.getDrawMean()[1])
                 system.getBars()
-                for b in []: #system.getBars():
-                    ap1 = AgentPainter(b.bc.neighbourhood)
-                    btype,d0,d1 = b.bc.barInfo
-                    print(b.i,b.j)
-                    # print(bu)
-                    # for i,u in enumerate(bu):
-                    #     ap1.paintHLine(nu.floor(u),step=2,color=(255,0,0))
-                    #     ap1.paintHLine(nu.ceil(u+self.getStaffLineWidth()),step=2,color=(255,0,0))
-                    #ap1.paintVLine(b.getBarHCoords()[0],step=2,color=(255,0,0))
-                    #ap1.paintVLine(b.getBarHCoords()[1],step=2,color=(255,0,0))
-                    ap1.writeImage('bar-{0:03d}-{1:03d}-{2}.png'.format(b.i,b.j,
-                                                                        {bc.BAR:'bar',
-                                                                         bc.DOUBLE_BAR:'double',
-                                                                         bc.INVALID:'non_bar'}[btype]))
                          
                 # for j,a in enumerate(barAgents):
                 #     self.ap.register(a)

@@ -184,54 +184,37 @@ class System(object):
                 agents.sort(key=lambda x: -x.score)
         return [a for a in agents if a.score > 1 and a.age > .1*K]
 
-    # def getNonTerminatingBarCandidates(self):
-    #     bs = nu.array([b.checkStaffSymmetry() for b in self.getBarCandidates()])
-    #     sidx = nu.argsort(bs)
-    #     if len(bs) > 2:
-    #         return list(nu.array(self.getBarCandidates())[sidx[1:-1]])
-    #     else:
-    #         return []
-        
-    # def selectOpeningClosingBars(self,bars):
-    #     # obsolete
-    #     bs = nu.array([b.checkStaffSymmetry() for b in bars])
-    #     opener = None
-    #     closer = None
-    #     if len(bs) < 4:
-    #         return (0,1)
-    #     sidx = nu.argsort(bs)
-    #     m = nu.mean(bs[sidx[1:-1]])
-    #     std = nu.std(bs[sidx[1:-1]])
-    #     if bs[sidx[0]]-m < 4*std:
-    #         opener = sidx[0]
-    #     if bs[sidx[-1]]-m > 4*std:
-    #         closer = sidx[-1]
-    #     return (opener,closer)
-
-    # @getter
-    # def getBars(self):
-    #     bars = [Bar(self,x) for x in self.getBarLines()]
-    #     print('bars',len(bars))
-    #     for b in bars:
-    #         pass #print(b.getNeighbourhood())
-    #     bars = [x for x in bars if x.getNeighbourhood() != None and x.checkStaffLines() > 50]
-    #     #and x.checkStaffLines() > 50]# and x.checkInterStaffSymmetry()<200 ]
-    #     #for i,b in enumerate(bars):
-    #     #    print(i,b.checkInterStaffSymmetry('s{0:03d}b{1:03d}.png'.format(self.n,i)),b.checkStaffSymmetry())
-    #     print('bars nonempty neighbourhood',len(bars))
-    #     return bars
-
     #@cachedProperty
     def getBars(self):
+        # get barcandidates (excluding those without a valid neighbourhood)
         barCandidates = [bc for bc in self.barCandidates if bc.estimatedType != None]
         info = [bc.barInfo for bc in barCandidates]
+        # estimated bar type (bar, double bar, invalid)
         btypes = [x[0] for x in info]
-        vidx = nu.array([x != BarCandidate.INVALID for x in btypes])
+        print('barCandidates')
+        for i,bc in enumerate(barCandidates):
+            print(i,bc.estimatedType,bc.barInfo[0])
+
+
+        for i,b in enumerate(barCandidates):
+            #print('type: ({0}{1}), lr: ({2:02f},{3:02f})'.format('x','x',b[0].barInfo[1][1],b[-1].barInfo[2][1]))
+            l,r = b.rotator.rotate(nu.array((b.barInfo[1],b.barInfo[2])))
+            print('system/bar',self.n,i)
+            print('barinfo',b.barInfo,b.estimatedType)
+            ap1 = AgentPainter(b.neighbourhood)
+            ap1.paintVLine(nu.round(l[1]),step=2,color=(255,0,0))
+            ap1.paintVLine(nu.round(r[1]),step=2,color=(255,0,0))
+            ap1.writeImage('bar-{0:03d}-{1:03d}.png'.format(self.n,i))
+            nu.savetxt('/tmp/bar-{0:03d}-{1:03d}.txt'.format(self.n,i),
+                       nu.column_stack((b.diffSums,
+                                        nu.sum(b.approximateNeighbourhood.astype(nu.float),0)[:-1])))
+
+        #vidx = nu.array([x != BarCandidate.INVALID for x in btypes])
+        vidx = nu.array([True for x in btypes])
         idx = nu.arange(len(info))
         valid = idx[vidx]
-        # detect if left or right end of candidates coincide
-        #leftMid = nu.array([x[1] for x in info])
-        #rightMid = nu.array([x[2] for x in info])
+
+        # detect if left or right end of consecutive candidates coincide
         leftMid = nu.array([info[x][1] for x in valid])
         rightMid = nu.array([info[x][2] for x in valid])
         leftDiff = nu.diff(leftMid,axis=0)
@@ -242,8 +225,7 @@ class System(object):
         lw = nu.mean([bc.agent.getLineWidth() for bc in barCandidates])
         lwFactor = 2
         linked = nu.logical_or(lDist < lwFactor*lw,rDist < lwFactor*lw)
-        bars = [bc.estimatedType(self.n,j,bc) for j,bc in 
-                enumerate([x for x in barCandidates if x.estimatedType != None])]
+        # aggregate groups of barcandidates that belong together
         bcs = []
         if len(valid) == 1:
             bcs.append((barCandidates[valid[0]],))
@@ -257,24 +239,31 @@ class System(object):
                     r = info[valid[i+1]][2]
                     double = info[j][0] == BarCandidate.DOUBLE_BAR or \
                         info[valid[i+1]][0] == BarCandidate.DOUBLE_BAR
-                    print(i,(j,valid[i+1]),l,r,double)
                     bcs.append((barCandidates[j],barCandidates[valid[i+1]]))
                     i += 2
                 else:
                     l,r = info[j][1:]
                     double = info[j][0] == BarCandidate.DOUBLE_BAR
-                    print(i,j,l,r,double)
                     bcs.append((barCandidates[j],))
                     i += 1
-        for i,b in enumerate(bcs):
-            print('type: ({0}{1}), lr: ({2:02f},{3:02f})'.format('x','x',b[0].barInfo[1][1],b[-1].barInfo[2][1]))
+            print(len(valid),valid,len(barCandidates),i)
+            if i == len(valid)-1:
+                print('jo',valid[i])
+                bcs.append((barCandidates[valid[i]],))
+                
+        for i,b in enumerate([]): #enumerate(bcs):
+            #print('type: ({0}{1}), lr: ({2:02f},{3:02f})'.format('x','x',b[0].barInfo[1][1],b[-1].barInfo[2][1]))
             l,r = b[0].rotator.rotate(nu.array((b[0].barInfo[1],b[-1].barInfo[2])))
+            print('system/bar',self.n,i)
+            for bc in b:
+                print('barinfo',bc.barInfo,bc.estimatedType)
             ap1 = AgentPainter(b[0].neighbourhood)
-            ap1.paintVLine(l[1],step=2,color=(255,0,0))
-            ap1.paintVLine(r[1],step=2,color=(255,0,0))
+            ap1.paintVLine(nu.round(l[1]),step=2,color=(255,0,0))
+            ap1.paintVLine(nu.round(r[1]),step=2,color=(255,0,0))
             ap1.writeImage('bar-{0:03d}-{1:03d}.png'.format(self.n,i))
-
-        return bars
+            nu.savetxt('/tmp/bar-{0:03d}-{1:03d}.txt'.format(self.n,i),b[0].diffSums)
+        
+        return None
 
     @cachedProperty
     def barCandidates(self):

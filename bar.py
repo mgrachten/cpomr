@@ -64,7 +64,7 @@ class Bar(object):
         self.bc = barCandidate
         self.i = i
         self.j = j
-        nu.savetxt('/tmp/bar-{0:03d}-{1:03d}.txt'.format(self.i,self.j),self.bc.diffSums)
+        #nu.savetxt('/tmp/bar-{0:03d}-{1:03d}.txt'.format(self.i,self.j),self.bc.diffSums)
 
 class LeftBar(Bar): 
     pass
@@ -111,13 +111,19 @@ class BarCandidate(object):
         npeaks = peaks[nu.logical_and(peaks>hi,peaks<lo)] 
         nvalleys = valleys[nu.logical_and(valleys>hi,valleys<lo)] 
         assert self.rotator != None
-        leftMid,rightMid = self.rotator.derotate(nu.array([[0.0,hi],[0.0,lo]]))
+        leftMid,rightMid = self.rotator.derotate(nu.array([[0.0,hi],[0.0,lo+1]]))
+        l,r = int(nu.round(leftMid[1])),int(round(rightMid[1]+1))
+        print('surface ratio',nu.sum(self.vSums[hi:lo+1])/((lo+1-hi)*nu.max(self.vSums)))
         if len(nvalleys) == len(npeaks):
             if len(nvalleys) == 0:
                 return self.BAR,leftMid,rightMid
             elif len(nvalleys) == 1:
                 return self.DOUBLE_BAR,leftMid,rightMid
         return self.INVALID,leftMid,rightMid
+
+    @cachedProperty
+    def vSums(self):
+        return nu.sum(self.approximateNeighbourhood.astype(nu.float),0)
 
     @cachedProperty
     def featureIdx(self):
@@ -288,7 +294,8 @@ class BarCandidate(object):
         lrmedian = nu.median(nu.array([x for y in [[bc.leftRightAbsDiffSums for bc in system.barCandidates
                                                     if bc.approximateNeighbourhood != None] 
                                        for system in self.system.scrImage.getSystems()] for x in y]),0)
-        statistic = self.leftRightAbsDiffSums/lrmedian
+        statistic = nu.array(self.leftRightAbsDiffSums)
+        statistic[statistic != 0] /= lrmedian[statistic != 0]
         if statistic[0] < .5:
             if statistic[1] < .5:
                 return None
@@ -300,6 +307,17 @@ class BarCandidate(object):
             else:
                 return MiddleBar
     
+    def _leftRightAbsDiffSums(self,lrs):
+        assert self.approximateNeighbourhood != None
+        bimg = self.approximateNeighbourhood.astype(nu.float)
+        ll,lr,rl,rr = lrs
+        hsumsl = nu.sum(bimg[:,ll:lr],1)**2
+        hsumsr = nu.sum(bimg[:,rl:rr],1)**2
+        hsl = nu.abs(nu.diff(hsumsl - nu.mean(hsumsl)))
+        hsr = nu.abs(nu.diff(hsumsr - nu.mean(hsumsr)))
+        m = max(1,max(nu.max(hsl),nu.max(hsr)))
+        return nu.sum(hsl)/m,nu.sum(hsr)/m
+        
     @cachedProperty
     def leftRightAbsDiffSums(self):
         """Returns the (normalized) sum(diff(abs)) of the 
@@ -310,21 +328,14 @@ class BarCandidate(object):
         the page.
         """
         assert self.approximateNeighbourhood != None
-        bimg = self.approximateNeighbourhood.astype(nu.float)
+        W = self.approximateNeighbourhood.shape[1]
         w = .3*self.system.getStaffLineDistance()
-        N = int(nu.floor(bimg.shape[1]/2.0))
-        l = int(max(0,N-.5*self.agent.getLineWidth()))
-        r = int(max(0,l-w))
-        #hsumsl = nu.sum(bimg[:,:N],1)**2
-        hsumsl = nu.sum(bimg[:,l:r],1)**2
-        l = int(nu.round(min(bimg.shape[1],N+.5*self.agent.getLineWidth())))
-        r = int(nu.round(min(bimg.shape[1],l+w)))
-        #hsumsr = nu.sum(bimg[:,-N:],1)**2
-        hsumsr = nu.sum(bimg[:,l:r],1)**2
-        hsl = nu.abs(nu.diff(hsumsl - nu.mean(hsumsl)))
-        hsr = nu.abs(nu.diff(hsumsr - nu.mean(hsumsr)))
-        m = max(1,max(nu.max(hsl),nu.max(hsr)))
-        return nu.sum(hsl)/m,nu.sum(hsr)/m
+        N = int(nu.floor(W/2.0))
+        lr = int(nu.round(max(0,N-.5*self.agent.getLineWidth())))
+        ll = int(nu.round(max(0,lr-w)))
+        rl = int(nu.round(min(W,N+.5*self.agent.getLineWidth())))
+        rr = int(nu.round(min(W,rl+w)))
+        return self._leftRightAbsDiffSums((ll,lr,rl,rr))
 
     @cachedProperty
     def neighbourhood(self):
