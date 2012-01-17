@@ -6,7 +6,7 @@ from utils import Rotator
 from utilities import cachedProperty, getter
 from agent import makeAgentClass, AgentPainter, assignToAgents, mergeAgents
 from utils import selectColumns
-from imageUtil import getAntiAliasedImg
+from imageUtil import getAntiAliasedImg, smooth
 from bar import BarCandidate
 
 def sortBarAgents(agents):
@@ -188,29 +188,32 @@ class System(object):
     def getBars(self):
         # get barcandidates (excluding those without a valid neighbourhood)
         barCandidates = [bc for bc in self.barCandidates if bc.estimatedType != None]
-        info = [bc.barInfo for bc in barCandidates]
+        #info = [bc.barInfo for bc in barCandidates]
         # estimated bar type (bar, double bar, invalid)
-        btypes = [x[0] for x in info]
+        #btypes = [x[0] for x in info]
         print('barCandidates')
-        for i,bc in enumerate(barCandidates):
-            print(i,bc.estimatedType,bc.barInfo[0])
-
-
         for i,b in enumerate(barCandidates):
             #print('type: ({0}{1}), lr: ({2:02f},{3:02f})'.format('x','x',b[0].barInfo[1][1],b[-1].barInfo[2][1]))
-            l,r = b.rotator.rotate(nu.array((b.barInfo[1],b.barInfo[2])))
+            #l,r = b.rotator.rotate(nu.array((b.barInfo[1],b.barInfo[2])))
+            barHCoords = b.rotator.rotate(b.barInfo)[:,1]
             print('system/bar',self.n,i)
-            print('barinfo',b.barInfo,b.estimatedType)
+            print('barinfo',b.estimatedType)
+            print('vcorr',b.vCorrection)
+            
             ap1 = AgentPainter(b.neighbourhood)
-            ap1.paintVLine(nu.round(l[1]),step=2,color=(255,0,0))
-            ap1.paintVLine(nu.round(r[1]),step=2,color=(255,0,0))
+            for bhc in barHCoords:
+                ap1.paintVLine(nu.round(bhc),step=2,color=(255,0,0))
+                #ap1.paintVLine(nu.round(r[1]),step=2,color=(255,0,0))
             ap1.writeImage('bar-{0:03d}-{1:03d}.png'.format(self.n,i))
             nu.savetxt('/tmp/bar-{0:03d}-{1:03d}.txt'.format(self.n,i),
-                       nu.column_stack((b.diffSums,
+                       nu.column_stack((b.diffSums,b.weights*b.diffSums,
+                                        b.curve,
                                         nu.sum(b.approximateNeighbourhood.astype(nu.float),0)[:-1])))
 
+        if True:
+            return None
         #vidx = nu.array([x != BarCandidate.INVALID for x in btypes])
-        vidx = nu.array([True for x in btypes])
+        vidx = nu.array([True for x in range(len(barcandidates))])
         idx = nu.arange(len(info))
         valid = idx[vidx]
 
@@ -263,7 +266,6 @@ class System(object):
             ap1.writeImage('bar-{0:03d}-{1:03d}.png'.format(self.n,i))
             nu.savetxt('/tmp/bar-{0:03d}-{1:03d}.txt'.format(self.n,i),b[0].diffSums)
         
-        return None
 
     @cachedProperty
     def barCandidates(self):
