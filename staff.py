@@ -58,17 +58,30 @@ class Staff(object):
         return nu.mean([(a.angle+.5)%1-.5 for a in self.staffLineAgents])
 
     @getter
-    def getTopBottom(self):
-        lTop = nu.array((0,0))
-        lBot = nu.array((self.scrImage.getHeight()-1,0))
+    def getTopBottomRight(self):
         rTop = nu.array((0,self.scrImage.getWidth()-1))
         rBot = nu.array((self.scrImage.getHeight()-1,self.scrImage.getWidth()-1))
         x0offset = self.staffLineAgents[0].offset
         x1offset = self.staffLineAgents[-1].offset
-        xx = nu.sort([self.staffLineAgents[0].getIntersection(lTop,lBot)[0]+x0offset,
-                      self.staffLineAgents[0].getIntersection(rTop,rBot)[0]+x0offset,
-                      self.staffLineAgents[-1].getIntersection(lTop,lBot)[0]+x1offset,
-                      self.staffLineAgents[-1].getIntersection(rTop,rBot)[0]+x1offset])
+        return (self.staffLineAgents[0].getIntersection(rTop,rBot)[0]+x0offset,
+                self.staffLineAgents[-1].getIntersection(rTop,rBot)[0]+x1offset)
+        
+    @getter
+    def getTopBottomLeft(self):
+        lTop = nu.array((0,0))
+        lBot = nu.array((self.scrImage.getHeight()-1,0))
+        x0offset = self.staffLineAgents[0].offset
+        x1offset = self.staffLineAgents[-1].offset
+        return (self.staffLineAgents[0].getIntersection(lTop,lBot)[0]+x0offset,
+                self.staffLineAgents[-1].getIntersection(lTop,lBot)[0]+x1offset)
+        
+    @getter
+    def getTopBottom(self):
+        """Return the highest and the lowest vertical coordinate that the staff lines span
+        NOTE: the difference between these two values larger than the width of the staff,
+        in case the staff is rotated.
+        """
+        xx = nu.sort(list(self.getTopBottomLeft)+list(self.getTopBottomRight))
         return xx[0],xx[-1]
 
     @getter 

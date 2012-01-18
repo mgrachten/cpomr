@@ -188,24 +188,49 @@ class System(object):
     def getBars(self):
         # get barcandidates (excluding those without a valid neighbourhood)
         barCandidates = [bc for bc in self.barCandidates if bc.estimatedType != None]
+        lw = nu.mean([bc.agent.getLineWidth() for bc in barCandidates])
+        lwFactor = 3
+        bc = []
+        for b in barCandidates:
+            if b.refine() != False:
+                if len(bc) > 0:
+                    lastb = bc[-1]
+                    if nu.abs(nu.mean(b.barHCoords[:,1])-nu.mean(lastb.barHCoords[:,1])) < lwFactor*lw:
+                        if len(lastb.barHCoordsLocal) == 4:
+                            pass 
+                        elif len(b.barHCoordsLocal) == 4:
+                            bc[-1] = b
+                        else:
+                            bgc = lastb.rotator.rotate(b.barHCoords).astype(nu.int)[:,1]+1
+                            lastb.barHCoordsLocal = nu.append(lastb.barHCoordsLocal,bgc)
+                            lastb.barHCoords = nu.vstack((lastb.barHCoords,b.barHCoords))
+                    else:
+                        bc.append(b)
+                else:
+                    bc.append(b)
+        barCandidates = bc
+
         #info = [bc.barInfo for bc in barCandidates]
         # estimated bar type (bar, double bar, invalid)
         #btypes = [x[0] for x in info]
+        
         print('barCandidates')
         for i,b in enumerate(barCandidates):
             #print('type: ({0}{1}), lr: ({2:02f},{3:02f})'.format('x','x',b[0].barInfo[1][1],b[-1].barInfo[2][1]))
             #l,r = b.rotator.rotate(nu.array((b.barInfo[1],b.barInfo[2])))
-            barHCoords = b.rotator.rotate(b.barInfo)[:,1]
+            #barHCoords = b.rotator.rotate(b.barInfo)[:,1]
             print('system/bar',self.n,i)
-            print('barinfo',b.estimatedType)
-            print('vcorr',b.vCorrection)
+            #print('barinfo',b.estimatedType)
+            #b.n = i
+            #print('vcorr',b.vCorrection)
             
             ap1 = AgentPainter(b.neighbourhood)
-            for bhc in barHCoords:
+            print('bhc',b.barHCoordsLocal)
+            for bhc in b.barHCoordsLocal:
                 ap1.paintVLine(nu.round(bhc),step=2,color=(255,0,0))
-                #ap1.paintVLine(nu.round(r[1]),step=2,color=(255,0,0))
-            ap1.writeImage('bar-{0:03d}-{1:03d}.png'.format(self.n,i))
-            nu.savetxt('/tmp/bar-{0:03d}-{1:03d}.txt'.format(self.n,i),
+            fn = os.path.splitext(os.path.basename(self.scrImage.fn))[0]
+            ap1.writeImage('{2}-bar-{0:03d}-{1:03d}.png'.format(self.n,i,fn))
+            nu.savetxt('/tmp/{2}-bar-{0:03d}-{1:03d}.txt'.format(self.n,i,fn),
                        nu.column_stack((b.diffSums,b.weights*b.diffSums,
                                         b.curve,
                                         nu.sum(b.approximateNeighbourhood.astype(nu.float),0)[:-1])))
@@ -256,10 +281,11 @@ class System(object):
                 
         for i,b in enumerate([]): #enumerate(bcs):
             #print('type: ({0}{1}), lr: ({2:02f},{3:02f})'.format('x','x',b[0].barInfo[1][1],b[-1].barInfo[2][1]))
-            l,r = b[0].rotator.rotate(nu.array((b[0].barInfo[1],b[-1].barInfo[2])))
+            #l,r = b[0].rotator.rotate(nu.array((b[0].barInfo[1],b[-1].barInfo[2])))
+            l,r = b[0].rotator.rotate(nu.array((b[0].barHCoords[1],b[-1].barHCoords[2])))
             print('system/bar',self.n,i)
             for bc in b:
-                print('barinfo',bc.barInfo,bc.estimatedType)
+                print('barinfo',bc.barHCoords,bc.estimatedType)
             ap1 = AgentPainter(b[0].neighbourhood)
             ap1.paintVLine(nu.round(l[1]),step=2,color=(255,0,0))
             ap1.paintVLine(nu.round(r[1]),step=2,color=(255,0,0))

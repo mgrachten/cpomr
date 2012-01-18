@@ -9,26 +9,6 @@ from utils import Rotator
 from agent import AgentPainter
 import scipy.stats
 
-def getHCenterAndWidth(bimg):
-    # deprecated?
-    crossSection = nu.median(bimg,0)
-    if nu.sum(crossSection) <= 0:
-        return (None,None,None)
-    avg = nu.average(nu.arange(len(crossSection)),weights=crossSection)
-    center = int(nu.round(avg))
-    total = nu.sum(crossSection)
-    half = (total-crossSection[center])/2.0
-    thr = .95
-    for left in xrange(center,0,-1):
-        if crossSection[left] == 0:
-            left +=1
-            break
-        if nu.sum(crossSection[left:center])/half > thr:
-            break
-    for right in xrange(center+1,len(crossSection)):
-        if nu.sum(crossSection[center+1:right])/half > thr or crossSection[right] == 0:
-            break
-    return nu.array((left,center,right))
 
 def getVCenterOfBarline(bimg,kRange,save=False):
     """
@@ -97,53 +77,233 @@ class BarCandidate(object):
         self.rotator = None
         self.doubleGapFactor = .1 # treat as double bar if diffSums has an internal gap > (dgp * main gap)
 
+
+    def refine(self):
+        # vertically adjust neighbourhood to center system
+        print(self.vCorrection)
+        self.neighbourhood = self._getNeighbourhood(nu.array((self.vCorrection,0.0)))
+        if self.neighbourhood == None:
+            return False
+        hi0,lo0,hi1,lo1 = self.barVCoordsLocal.astype(nu.int)
+        hcoords = self.barHCoordsLocal.astype(nu.int)
+        print('hcl',hcoords)
+        print('vcl',self.barVCoordsLocal.astype(nu.int))
+        #h = lo0-hi0+lo1-hi1
+        h = lo1-hi0
+        img = self.neighbourhood.astype(nu.float)
+        #filledness = (nu.mean(nu.abs(nu.diff(img[hi0:lo1,hcoords[0]+1:hcoords[1]],axis=0)))+
+        #              nu.mean(nu.abs(nu.diff(img[hi0:lo1,hcoords[0]+1:hcoords[1]],axis=1))))/2.0
+        nstd = [nu.std(img[hi0:lo1,hcoords[0]+1:hcoords[1]])/nu.mean(img[hi0:lo1,hcoords[0]+1:hcoords[1]])]
+        if len(hcoords) == 4:
+            #filledness += nu.sum(img[hi0:lo1,hcoords[2]+1:hcoords[3]])
+            #filledness += (nu.mean(nu.abs(nu.diff(img[hi0:lo1,hcoords[2]+1:hcoords[3]],axis=0)))+
+            #              nu.mean(nu.abs(nu.diff(img[hi0:lo1,hcoords[2]+1:hcoords[3]],axis=1))))/2.0
+            #filledness /= 2
+            nstd.append(nu.std(img[hi0:lo1,hcoords[2]+1:hcoords[3]])/nu.mean(img[hi0:lo1,hcoords[2]+1:hcoords[3]]))
+        nstd = nu.array(nstd)
+        self.invalid = nu.max(nstd) > .5
+        return not self.invalid
+        #print('fill',filledness)
+        #return True
+
     @cachedProperty
     def diffSums(self):
         return nu.sum(nu.diff(self.neighbourhood.astype(nu.float),axis=1),0)
 
+    @cachedProperty    
+    def barVCoordsLocal(self):
+        """Assumes vCorrection has been applied to self.neighbourhood
+        """
+        staff0Top,staff0Bot = self.system.staffs[0].getTopBottomLeft()
+        staff1Top,staff1Bot = self.system.staffs[1].getTopBottomLeft()
+        w = staff1Bot-staff0Top
+        offset = (self.neighbourhood.shape[0]-w)/2.0
+        return nu.array([staff0Top,staff0Bot,staff1Top,staff1Bot])-staff0Top+offset
+
     @cachedProperty
-    def barInfo(self):
+    def barHCoordsLocal(self):
         mid = self.diffSums.shape[0]/2.0
         self.weights = scipy.stats.norm.pdf(nu.arange(self.diffSums.shape[0]),mid,self.agent.getLineWidth())
-        #self.curve = smooth(self.diffSums*self.weights,int(max(3,.5*self.agent.getLineWidth())))
         self.curve = self.diffSums*self.weights
         peaks = findPeaks(self.curve)
         valleys = findValleys(self.curve)
-        #mid = self.neighbourhood.shape[1]/2.0
         lpeaks = peaks[peaks <= mid]
         rvalleys = valleys[valleys >= mid]
         hi = lpeaks[nu.argmax(self.curve[lpeaks])]
         lo = rvalleys[nu.argmin(self.curve[rvalleys])]
         npeaks = peaks[nu.logical_and(peaks>hi,peaks<lo)] 
         nvalleys = valleys[nu.logical_and(valleys>hi,valleys<lo)] 
-        assert self.rotator != None
-        leftMid,rightMid = self.rotator.derotate(nu.array([[0.0,hi],[0.0,lo+1]]))
-        l,r = int(nu.round(leftMid[1])),int(round(rightMid[1]+1))
-        #print('width',rightMid-leftMid,'agent width',self.agent.getLineWidth())
-        #print('hldiff',hi,lo,self.curve[hi]-self.curve[lo])
+        #leftMid,rightMid = hi,lo+1
+        #l,r = int(nu.round(leftMid[1])),int(round(rightMid[1]+1))
         npeaks = npeaks[nu.argsort(self.curve[npeaks])[::-1]]
         nvalleys = nvalleys[nu.argsort(self.curve[nvalleys])]
         isDouble = False
         if len(npeaks) > 0 and len(nvalleys) > 0 and npeaks[0]>nvalleys[0]:
             mainGap = self.curve[hi]-self.curve[lo]
-            iRight = nvalleys[0]
-            iLeft = npeaks[0]
-            subGap = self.curve[iLeft]-self.curve[iRight]
+            lo1 = nvalleys[0]
+            hi1 = npeaks[0]
+            subGap = self.curve[hi1]-self.curve[lo1]
             isDouble = subGap/mainGap > self.doubleGapFactor
-            iLeft,iRight = self.rotator.derotate(nu.array([[0.0,iLeft],[0.0,iRight+1]]))
+            #iLeft,iRight = nu.array([[0.0,iLeft+1],[0.0,iRight]])
             if isDouble:
-                return nu.array((leftMid,iLeft,iRight,rightMid)).reshape((-1,2))
-        return nu.array((leftMid,rightMid)).reshape((-1,2))
-        # if len(nvalleys) == len(npeaks):
-        #     if len(nvalleys) == 0:
-        #         return self.BAR,leftMid,rightMid
-        #     elif len(nvalleys) == 1:
-        #         return self.DOUBLE_BAR,leftMid,rightMid
-        # return self.INVALID,leftMid,rightMid
+                return nu.array((hi,lo1+1,hi1,lo+1))
+        return nu.array((hi,lo+1))
 
     @cachedProperty
-    def vSums(self):
-        return nu.sum(self.approximateNeighbourhood.astype(nu.float),0)
+    def barHCoords(self):
+        assert self.rotator != None
+        return self.rotator.derotate(nu.column_stack((nu.zeros(self.barHCoordsLocal.shape[0]),self.barHCoordsLocal)))
+
+    #@cachedProperty
+    #def vSums(self):
+    #    return nu.sum(self.approximateNeighbourhood.astype(nu.float),0)
+
+    @cachedProperty
+    def estimatedType(self):
+        """
+        Estimate whether this candidate is a LEFT, MIDDLE, RIGHT or INVALID bar. It
+        takes into account all barcandidates on the page, and for that it depends on
+        self.approximateNeighbourhood (watch out for cyclic dependencies)
+        """
+        
+        if self.approximateNeighbourhood == None:
+            return None
+        lrmedian = nu.median(nu.array([x for y in [[bc.leftRightAbsDiffSums for bc in system.barCandidates
+                                                    if bc.approximateNeighbourhood != None] 
+                                       for system in self.system.scrImage.getSystems()] for x in y]),0)
+        statistic = nu.array(self.leftRightAbsDiffSums)
+        statistic[statistic != 0] /= lrmedian[statistic != 0]
+        if statistic[0] < .5:
+            if statistic[1] < .5:
+                return None
+            else:
+                return LeftBar
+        else:
+            if statistic[1] < .5:
+                return RightBar
+            else:
+                return MiddleBar
+    
+    def _leftRightAbsDiffSums(self,lrs):
+        assert self.approximateNeighbourhood != None
+        bimg = self.approximateNeighbourhood.astype(nu.float)
+        ll,lr,rl,rr = lrs
+        hsumsl = nu.sum(bimg[:,ll:lr],1)**2
+        hsumsr = nu.sum(bimg[:,rl:rr],1)**2
+        hsl = nu.abs(nu.diff(hsumsl - nu.mean(hsumsl)))
+        hsr = nu.abs(nu.diff(hsumsr - nu.mean(hsumsr)))
+        m = max(1,max(nu.max(hsl),nu.max(hsr)))
+        return nu.sum(hsl)/m,nu.sum(hsr)/m
+        
+    @cachedProperty
+    def leftRightAbsDiffSums(self):
+        """Returns the (normalized) sum(diff(abs)) of the 
+        horizontally summed left and right halves of the image.
+        This helps distinguish between within-system, left-border 
+        and right-border bars, respectively. The decision is best 
+        made after normalizing values over all bar candidates in 
+        the page.
+        """
+        assert self.approximateNeighbourhood != None
+        W = self.approximateNeighbourhood.shape[1]
+        w = .3*self.system.getStaffLineDistance()
+        N = int(nu.floor(W/2.0))
+        lr = int(nu.round(max(0,N-.5*self.agent.getLineWidth())))
+        ll = int(nu.round(max(0,lr-w)))
+        rl = int(nu.round(min(W,N+.5*self.agent.getLineWidth())))
+        rr = int(nu.round(min(W,rl+w)))
+        return self._leftRightAbsDiffSums((ll,lr,rl,rr))
+
+    @cachedProperty
+    def neighbourhood(self):
+        #print(self.estimatedType)
+        return self.approximateNeighbourhood
+
+    @cachedProperty
+    def approximateNeighbourhood(self):
+        return self._getNeighbourhood()
+
+    @cachedProperty
+    def rotator(self):
+        return self.rotator
+        
+    @cachedProperty
+    def vCorrection(self):
+        img = self.approximateNeighbourhood.astype(nu.float)
+        l,r = self.barHCoordsLocal[nu.array((0,-1))]
+        if self.estimatedType == LeftBar:
+            img = img[:,l:]
+        elif self.estimatedType == RightBar:
+            img = img[:,:r]
+        staff0Top,staff0Bot = self.system.staffs[0].getTopBottomLeft()
+        staff1Top,staff1Bot = self.system.staffs[1].getTopBottomLeft()
+        extra = 5
+        L = int(nu.ceil(staff1Bot-staff0Top)+2*extra)
+        #print(self.system.n,'systemheight',nu.ceil(staff1Bot-staff0Top))
+        comb = nu.zeros(L)
+        #comb[extra:extra+L] = 1.0
+        #print(L)
+        comb[nu.round(nu.linspace(staff0Top,staff0Bot-1,5)-staff0Top+extra).astype(nu.int)] += 1
+        comb[nu.round(nu.linspace(staff1Top,staff1Bot-1,5)-staff0Top+extra).astype(nu.int)] += 1
+        comb = comb[::-1]
+        conv = nu.convolve(nu.sum(img,1),comb,'valid')
+        offset = nu.argmax(conv)
+        vCorrection = offset-img.shape[0]/2.0+comb.shape[0]/2.0
+        #print('offset',vCorrection)
+        if True:
+            return vCorrection
+        f = '-{0:03d}-{1:03d}'.format(self.system.n,self.n)
+        nu.savetxt('/tmp/a'+f+'.txt',conv)
+        nu.savetxt('/tmp/img'+f+'.txt',nu.sum(img,1))
+        nu.savetxt('/tmp/c'+f+'.txt',comb[::-1])
+
+    def _getNeighbourhood(self,midCorrection=None):
+        # approximate system top and bottom (based on global staff detection)
+        system0Top = self.system.rotator.rotate(self.system.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
+        system1Bot = self.system.rotator.rotate(self.system.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
+        sysHeight = (system1Bot-system0Top)
+        yTop = self.agent.getDrawMean()[1]+(system0Top-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.angle)
+        yBot = self.agent.getDrawMean()[1]+(system1Bot-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.angle)
+        middle = (nu.array((system0Top,yTop))+nu.array((system1Bot,yBot)))/2.0
+        if midCorrection != None:
+            middle += midCorrection
+        #r = Rotator(self.agent.angle-.5,middle,nu.array((0,0.)))
+        self.rotator = Rotator(self.agent.angle-.5,middle,nu.array((0,0.)))
+        hhalf = int(sysHeight*self.heightFactor/2.)
+        whalf = int(2*self.system.getStaffLineDistance())
+        xx,yy = nu.mgrid[-hhalf:hhalf,-whalf:whalf]
+        xxr,yyr = self.rotator.derotate(xx,yy)
+        # check if derotated neighbourhood is inside image
+        minx,maxx,miny,maxy = nu.min(xxr),nu.max(xxr),nu.min(yyr),nu.max(yyr)
+        M,N = self.system.correctedImgSegment.shape
+        if minx < 0 or miny < 0 or maxx >= M or maxy >= N:
+            return None
+        cimg = getAntiAliasedImg(self.system.correctedImgSegment,xxr,yyr)
+        return cimg
+
+    def write(self):
+        getVCenterOfBarline(self.approximateNeighbourhood,self.kRange,True)
+
+    @cachedProperty
+    def points(self):
+        # deprecated?
+        cimg = self.approximateNeighbourhood
+        if cimg == None:
+            return None, None
+        vhalf = int(cimg.shape[0]/2.0)
+        hhalf = int(cimg.shape[1]/2.0)
+        left,hCenter,right = getHCenterAndWidth(cimg)
+        if left == None:
+            return None, None
+        hCorrection = hCenter - hhalf
+        w = right-left
+        print('w,left,hCenter,right',w,left,hCenter,right,hCorrection,cimg.shape)
+        h0 = max(0,left-hCorrection-w)
+        h1 = left-hCorrection
+        h2 = right-hCorrection
+        h3 = min(cimg.shape[1],right-hCorrection+w)
+        vCorrection = getVCenterOfBarline(cimg[:,h0:h3],self.kRange)-vhalf
+        return nu.array((vCorrection,hCorrection)),nu.array((h0,h1,h2,h3))
 
     @cachedProperty
     def featureIdx(self):
@@ -272,13 +432,6 @@ class BarCandidate(object):
         # print('mean interstaffline right from staffs',interStaffRight)
         return (barStaff0,barStaff1,aboveBar,belowBar,staffLeft,staffRight,interStaffLeft,interStaffRight,interStaff)
 
-    # todo:
-    # * staff border detection: take larger margins around bar to look for absent stafflines at one side
-    # * bars that are close: adapt margins to avoid interference?
-    # * take apart wider bars: redo bar detection to separate double bars?
-    # * increase impact of white in barStaff0 and barStaff1
-    
-
     @cachedProperty
     def getVerticalStaffLinePositions(self):
         # approximate system top and bottom (based on global staff detection)
@@ -300,228 +453,6 @@ class BarCandidate(object):
         f0 = krng[nu.argmax([nu.sum(hsums[staff0Rows+k]) for k in krng])]
         f1 = krng[nu.argmax([nu.sum(hsums[staff1Rows+k]) for k in krng])]
         return nu.append(staff0Tops+f0,staff1Tops+f1)
-
-    @cachedProperty
-    def estimatedType(self):
-        """
-        Estimate whether this candidate is a LEFT, MIDDLE, RIGHT or INVALID bar. It
-        takes into account all barcandidates on the page, and for that it depends on
-        self.approximateNeighbourhood (watch out for cyclic dependencies)
-        """
-        
-        if self.approximateNeighbourhood == None:
-            return None
-        lrmedian = nu.median(nu.array([x for y in [[bc.leftRightAbsDiffSums for bc in system.barCandidates
-                                                    if bc.approximateNeighbourhood != None] 
-                                       for system in self.system.scrImage.getSystems()] for x in y]),0)
-        statistic = nu.array(self.leftRightAbsDiffSums)
-        statistic[statistic != 0] /= lrmedian[statistic != 0]
-        if statistic[0] < .5:
-            if statistic[1] < .5:
-                return None
-            else:
-                return LeftBar
-        else:
-            if statistic[1] < .5:
-                return RightBar
-            else:
-                return MiddleBar
-    
-    def _leftRightAbsDiffSums(self,lrs):
-        assert self.approximateNeighbourhood != None
-        bimg = self.approximateNeighbourhood.astype(nu.float)
-        ll,lr,rl,rr = lrs
-        hsumsl = nu.sum(bimg[:,ll:lr],1)**2
-        hsumsr = nu.sum(bimg[:,rl:rr],1)**2
-        hsl = nu.abs(nu.diff(hsumsl - nu.mean(hsumsl)))
-        hsr = nu.abs(nu.diff(hsumsr - nu.mean(hsumsr)))
-        m = max(1,max(nu.max(hsl),nu.max(hsr)))
-        return nu.sum(hsl)/m,nu.sum(hsr)/m
-        
-    @cachedProperty
-    def leftRightAbsDiffSums(self):
-        """Returns the (normalized) sum(diff(abs)) of the 
-        horizontally summed left and right halves of the image.
-        This helps distinguish between within-system, left-border 
-        and right-border bars, respectively. The decision is best 
-        made after normalizing values over all bar candidates in 
-        the page.
-        """
-        assert self.approximateNeighbourhood != None
-        W = self.approximateNeighbourhood.shape[1]
-        w = .3*self.system.getStaffLineDistance()
-        N = int(nu.floor(W/2.0))
-        lr = int(nu.round(max(0,N-.5*self.agent.getLineWidth())))
-        ll = int(nu.round(max(0,lr-w)))
-        rl = int(nu.round(min(W,N+.5*self.agent.getLineWidth())))
-        rr = int(nu.round(min(W,rl+w)))
-        return self._leftRightAbsDiffSums((ll,lr,rl,rr))
-
-    @cachedProperty
-    def neighbourhood(self):
-        #print(self.estimatedType)
-        return self.approximateNeighbourhood
-
-    @cachedProperty
-    def points(self):
-        # deprecated?
-        cimg = self.approximateNeighbourhood
-        if cimg == None:
-            return None, None
-        vhalf = int(cimg.shape[0]/2.0)
-        hhalf = int(cimg.shape[1]/2.0)
-        left,hCenter,right = getHCenterAndWidth(cimg)
-        if left == None:
-            return None, None
-        hCorrection = hCenter - hhalf
-        w = right-left
-        print('w,left,hCenter,right',w,left,hCenter,right,hCorrection,cimg.shape)
-        h0 = max(0,left-hCorrection-w)
-        h1 = left-hCorrection
-        h2 = right-hCorrection
-        h3 = min(cimg.shape[1],right-hCorrection+w)
-        vCorrection = getVCenterOfBarline(cimg[:,h0:h3],self.kRange)-vhalf
-        return nu.array((vCorrection,hCorrection)),nu.array((h0,h1,h2,h3))
-
-    @cachedProperty
-    def approximateNeighbourhood(self):
-        return self._getNeighbourhood()
-
-    @cachedProperty
-    def rotator(self):
-        return self.rotator
-        
-    @cachedProperty
-    def vCorrection(self):
-        img = self.approximateNeighbourhood.astype(nu.float)
-        l,r = self.barInfo[(0,-1),1]
-        l1,l2 = self.barInfo[(0,1),1]
-        w = l2-l1
-        if False: #self.estimatedType == LeftBar:
-            img = img[:,r:]
-            #img = nu.column_stack((img[:,:l],img[:,:l]))
-        elif False: #self.estimatedType == RightBar:
-            img = img[:,:l]
-        elif False: #self.estimatedType == MiddleBar:
-            img = img[:,max(0,l-w):min(r+w,img.shape[1])]
-        # #nu.column_stack((img[:,max(0,l-w],img[:,r:min(r+w,img.shape[1])]))
-        vhalf = int(img.shape[0]/2.0)
-        vCorrection = getVCenterOfBarline(img,self.kRange)-vhalf
-        self.neighbourhood = self._getNeighbourhood(nu.array((vCorrection,0.0)))
-        print('tb tb')
-        print(self.system.staffs[0].getTopBottom())
-        print(self.system.staffs[1].getTopBottom())
-
-    def _getNeighbourhood(self,midCorrection=None):
-        # approximate system top and bottom (based on global staff detection)
-        system0Top = self.system.rotator.rotate(self.system.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
-        system1Bot = self.system.rotator.rotate(self.system.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
-        sysHeight = (system1Bot-system0Top)
-        yTop = self.agent.getDrawMean()[1]+(system0Top-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.angle)
-        yBot = self.agent.getDrawMean()[1]+(system1Bot-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.angle)
-        middle = (nu.array((system0Top,yTop))+nu.array((system1Bot,yBot)))/2.0
-        if midCorrection != None:
-            middle += midCorrection
-        #r = Rotator(self.agent.angle-.5,middle,nu.array((0,0.)))
-        self.rotator = Rotator(self.agent.angle-.5,middle,nu.array((0,0.)))
-        hhalf = int(sysHeight*self.heightFactor/2.)
-        whalf = int(2*self.system.getStaffLineDistance())
-        xx,yy = nu.mgrid[-hhalf:hhalf,-whalf:whalf]
-        xxr,yyr = self.rotator.derotate(xx,yy)
-        # check if derotated neighbourhood is inside image
-        minx,maxx,miny,maxy = nu.min(xxr),nu.max(xxr),nu.min(yyr),nu.max(yyr)
-        M,N = self.system.correctedImgSegment.shape
-        if minx < 0 or miny < 0 or maxx >= M or maxy >= N:
-            return None
-        cimg = getAntiAliasedImg(self.system.correctedImgSegment,xxr,yyr)
-        return cimg
-
-    def write(self):
-        getVCenterOfBarline(self.approximateNeighbourhood,self.kRange,True)
-
-    # @cachedProperty
-    # def getNeighbourhoodNew(self):
-    #     """obsolete"""
-    #     center,hPoints = self.points
-    #     if center == None:
-    #         return None
-    #     print('c, hp',center,hPoints)
-    #     cimg = self._getNeighbourhood(center)
-    #     if cimg == None:
-    #         return None
-    #     print('cimg1',cimg.shape)
-    #     return cimg
-
-    # @cachedProperty
-    # def getNeighbourhoodOld(self):
-    #     # approximate system top and bottom (based on global staff detection)
-    #     system0Top = self.system.rotator.rotate(self.system.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
-    #     system1Bot = self.system.rotator.rotate(self.system.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
-    #     sysHeight = (system1Bot-system0Top)
-
-    #     yTop = self.agent.getDrawMean()[1]+(system0Top-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.angle)
-    #     yBot = self.agent.getDrawMean()[1]+(system1Bot-self.agent.getDrawMean()[0])*nu.cos(nu.pi*self.agent.angle)
-    #     middle = (nu.array((system0Top,yTop))+nu.array((system1Bot,yBot)))/2.0
-
-    #     h1 = nu.round(middle[1]-.5*self.agent.getLineWidth())
-    #     h2 = nu.round(middle[1]+.5*self.agent.getLineWidth())
-    #     w = h2-h1
-    #     whalf = int(nu.round(w*self.widthFactor/2.))
-    #     hhalf = int(sysHeight*self.heightFactor/2.)
-        
-    #     r = Rotator(self.agent.angle-.5,middle,nu.array((0,0.)))
-    #     self.h1 = nu.round(r.rotate(nu.array([[middle[0],h1]]))[0,1]+whalf)
-    #     self.h2 = nu.round(r.rotate(nu.array([[middle[0],h2]]))[0,1]+whalf)
-    #     #mh1 = nu.round(r.derotate(nu.array([[0,-.5*self.agent.getLineWidth()]]))[0,1]+whalf)
-    #     xx,yy = nu.mgrid[-hhalf:hhalf,-whalf:whalf]
-    #     xxr,yyr = r.derotate(xx,yy)
-    #     # check if derotated neighbourhood is inside image
-    #     minx,maxx,miny,maxy = nu.min(xxr),nu.max(xxr),nu.min(yyr),nu.max(yyr)
-    #     M,N = self.system.correctedImgSegment.shape
-    #     #print('w,h',middle)
-    #     #print('mm',minx,maxx,M,miny,maxy,N)
-    #     if minx < 0 or miny < 0 or maxx >= M or maxy >= N:
-    #         return None
-
-    #     cimg = getAntiAliasedImg(self.system.correctedImgSegment,xxr,yyr)
-    #     h0 = max(0,h1-w)
-    #     h3 = min(N,h2+w)
-    #     vCorrection = getVCenterOfBarline(cimg,self.kRange)-hhalf
-    #     # TODO: check if barneighbourhood is inside corrected system segment
-    #     cimg = getAntiAliasedImg(self.system.correctedImgSegment,xxr+vCorrection,yyr)
-    #     #print(cimg.shape)
-    #     return cimg
-
-    # @cachedProperty
-    # def getBarHCoordsOld(self):
-    #     M = self.getNeighbourhood().shape[1]
-    #     #return nu.round(nu.array(((M-self.agent.getLineWidth())/2.,(M+self.agent.getLineWidth())/2.))).astype(nu.int)
-    #     return nu.array((nu.ceil((M-self.agent.getLineWidth())/2.),nu.floor((M+self.agent.getLineWidth())/2.))).astype(nu.int)
-
-
-    # @cachedProperty
-    # def getEstimates(self):
-    #     return nu.array((self.getBarEstimate(),self.getLeftMostBarEstimate(),self.getRightMostBarEstimate()))
-
-    # @cachedProperty
-    # def getBarEstimate(self):
-    #     f = self.getFeatures()
-    #     black = (f[0]+f[1]+f[5]+f[4])/(4.*255)
-    #     white = (f[2]+f[3]+f[6]+f[7])/(4.*255)
-    #     return black-white
-
-    # @cachedProperty
-    # def getLeftMostBarEstimate(self):
-    #     f = self.getFeatures()
-    #     white = f[4]/255.
-    #     return 1-white
-
-    # @cachedProperty
-    # def getRightMostBarEstimate(self):
-    #     f = self.getFeatures()
-    #     white = f[5]/255.
-    #     return 1-white
-
     
 if __name__ == '__main__':
     pass
