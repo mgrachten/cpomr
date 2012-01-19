@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys,os
+import sys,os, pickle
 import numpy as nu
 from utilities import cachedProperty, getter
 from imageUtil import writeImageData, getPattern, findValleys, smooth, normalize
@@ -122,7 +122,10 @@ class ScoreImage(object):
         sysSegs = []
         k=0
         barCandidates = []
-
+        acc = {}
+        fn = os.path.splitext(os.path.basename(self.fn))[0]
+        groundtruthfile = '/home/maarten/Desktop/mephistoWaltz1/{0}.txt'.format(fn)
+        gt = nu.loadtxt(groundtruthfile)[:,(1,0)]
         for system in self.getSystems():
             if True: #i==1: 
                 sys.stdout.write('drawing system {0}\n'.format(system.n))
@@ -133,7 +136,7 @@ class ScoreImage(object):
                 #barAgents = [x.agent for x in system.barCandidates]
                 #barAgents = [x.agent for x in system.getBars()]
                 #barAgents.sort(key=lambda x: x.getDrawMean()[1])
-                system.getBars()
+                acc = system.getBars(acc,gt)
                          
                 # for j,a in enumerate(barAgents):
                 #     self.ap.register(a)
@@ -146,9 +149,8 @@ class ScoreImage(object):
                 #                      size=14,color=(255,0,0),alpha=.8)
                 #     k+=1
                 #    self.ap.drawAgent(a,int(b0),int(b1),system.rotator)
-        #bfname = os.path.join('/tmp/',os.path.splitext(os.path.basename(self.fn))[0]+'-barfeatures.txt')
-        #nu.savetxt(bfname,nu.array(bf),fmt='%d')
-        #self.ap.writeImage(self.fn)
+        with open('/tmp/{0}-acc.dat'.format(fn),'w') as f:
+            pickle.dump(acc,f)
         if True:
             return True
 

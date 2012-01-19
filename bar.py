@@ -9,44 +9,11 @@ from utils import Rotator
 from agent import AgentPainter
 import scipy.stats
 
-
-def getVCenterOfBarline(bimg,kRange,save=False):
-    """
-    This function finds the vertical center of bar lines, by
-    computing the product of the upper and lower half around
-    the hypothetical center. When the hypothetical center is 
-    correct, the product will be maximal/minimal (depending on
-    the semantics of the color values).
-    """
-    hhalf = 0
-    N,M = bimg.shape
-    rsums = nu.sum(bimg.astype(nu.float),1)
-    m = (nu.max(rsums)-nu.min(rsums))/2.0
-    rsums -= m
-    kMin = int(N*(1-kRange)/2.0)
-    kMax = int(N*(1+kRange)/2.0)
-    scores = []
-    krng = range(kMin,kMax+1)
-    for k in krng:
-        w = min(k,N-k-1)
-        #scores.append(nu.sum(((bimg[k-w:k,:]-127)*(bimg[k+w:k:-1,:]-127)))/w)
-        scores.append(nu.sum(rsums[k-w:k]*rsums[k+w:k:-1])/w)
-    if save:
-        nu.savetxt('/tmp/s.txt',nu.column_stack((nu.array(krng)-hhalf,scores)))
-        nu.savetxt('/tmp/img.txt',(rsums+m)/255.)
-        b,c = nu.histogram(bimg.reshape((-1,1)))
-        nu.savetxt('/tmp/h.txt',nu.column_stack((b,(c[:-1]+c[1:])/2.0)))
-        nu.savetxt('/tmp/ssums.txt',nu.sort((rsums+m)/255.))
-        nu.savetxt('/tmp/simg.txt',bimg[nu.argsort(rsums),:])
-        nu.savetxt('/tmp/med.txt',nu.median(bimg,0))
-    return krng[nu.argmax(scores)]
-
 class Bar(object):
     def __init__(self,i,j,barCandidate):
         self.bc = barCandidate
         self.i = i
         self.j = j
-        #nu.savetxt('/tmp/bar-{0:03d}-{1:03d}.txt'.format(self.i,self.j),self.bc.diffSums)
 
 class LeftBar(Bar): 
     pass
@@ -86,25 +53,17 @@ class BarCandidate(object):
             return False
         hi0,lo0,hi1,lo1 = self.barVCoordsLocal.astype(nu.int)
         hcoords = self.barHCoordsLocal.astype(nu.int)
-        print('hcl',hcoords)
-        print('vcl',self.barVCoordsLocal.astype(nu.int))
-        #h = lo0-hi0+lo1-hi1
+        #print('hcl',hcoords)
+        #print('vcl',self.barVCoordsLocal.astype(nu.int))
         h = lo1-hi0
         img = self.neighbourhood.astype(nu.float)
-        #filledness = (nu.mean(nu.abs(nu.diff(img[hi0:lo1,hcoords[0]+1:hcoords[1]],axis=0)))+
-        #              nu.mean(nu.abs(nu.diff(img[hi0:lo1,hcoords[0]+1:hcoords[1]],axis=1))))/2.0
         nstd = [nu.std(img[hi0:lo1,hcoords[0]+1:hcoords[1]])/nu.mean(img[hi0:lo1,hcoords[0]+1:hcoords[1]])]
         if len(hcoords) == 4:
-            #filledness += nu.sum(img[hi0:lo1,hcoords[2]+1:hcoords[3]])
-            #filledness += (nu.mean(nu.abs(nu.diff(img[hi0:lo1,hcoords[2]+1:hcoords[3]],axis=0)))+
-            #              nu.mean(nu.abs(nu.diff(img[hi0:lo1,hcoords[2]+1:hcoords[3]],axis=1))))/2.0
-            #filledness /= 2
             nstd.append(nu.std(img[hi0:lo1,hcoords[2]+1:hcoords[3]])/nu.mean(img[hi0:lo1,hcoords[2]+1:hcoords[3]]))
         nstd = nu.array(nstd)
         self.invalid = nu.max(nstd) > .5
         return not self.invalid
-        #print('fill',filledness)
-        #return True
+
 
     @cachedProperty
     def diffSums(self):
@@ -133,8 +92,6 @@ class BarCandidate(object):
         lo = rvalleys[nu.argmin(self.curve[rvalleys])]
         npeaks = peaks[nu.logical_and(peaks>hi,peaks<lo)] 
         nvalleys = valleys[nu.logical_and(valleys>hi,valleys<lo)] 
-        #leftMid,rightMid = hi,lo+1
-        #l,r = int(nu.round(leftMid[1])),int(round(rightMid[1]+1))
         npeaks = npeaks[nu.argsort(self.curve[npeaks])[::-1]]
         nvalleys = nvalleys[nu.argsort(self.curve[nvalleys])]
         isDouble = False
@@ -144,7 +101,6 @@ class BarCandidate(object):
             hi1 = npeaks[0]
             subGap = self.curve[hi1]-self.curve[lo1]
             isDouble = subGap/mainGap > self.doubleGapFactor
-            #iLeft,iRight = nu.array([[0.0,iLeft+1],[0.0,iRight]])
             if isDouble:
                 return nu.array((hi,lo1+1,hi1,lo+1))
         return nu.array((hi,lo+1))
@@ -306,6 +262,34 @@ class BarCandidate(object):
         return nu.array((vCorrection,hCorrection)),nu.array((h0,h1,h2,h3))
 
     @cachedProperty
+    def getStaffVCoords(self):
+        staffTops = self.getVerticalStaffLinePositions()
+        staffBots = staffTops+self.system.getStaffLineWidth()
+        return self.getVerticalStaffLinePositions
+
+    @cachedProperty
+    def getVerticalStaffLinePositions(self):
+        # approximate system top and bottom (based on global staff detection)
+        system0Top = self.system.rotator.rotate(self.system.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
+        system1Bot = self.system.rotator.rotate(self.system.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
+        sysHeight = (system1Bot-system0Top)
+        hhalf = int(sysHeight*self.heightFactor/2.)
+        sld = self.system.staffs[0].getStaffLineDistance()
+        krng = range(-int(nu.ceil(.5*sld)),int(nu.ceil(.5*sld)))
+        hsums = nu.sum(self.neighbourhood,1)
+        hslw = int(nu.floor(.5*self.system.getStaffLineWidth()))
+
+        inStaff = nu.arange(nu.round(self.system.getStaffLineWidth()))
+
+        staff0Tops = hhalf-.5*sysHeight-hslw+nu.arange(5)*sld
+        staff1Tops = hhalf+.5*sysHeight-hslw-nu.arange(4,-1,-1)*sld
+        staff0Rows = nu.round(nu.array([s+inStaff for s in staff0Tops]).flat[:]).astype(nu.int)
+        staff1Rows = nu.round(nu.array([s+inStaff for s in staff1Tops]).flat[:]).astype(nu.int)
+        f0 = krng[nu.argmax([nu.sum(hsums[staff0Rows+k]) for k in krng])]
+        f1 = krng[nu.argmax([nu.sum(hsums[staff1Rows+k]) for k in krng])]
+        return nu.append(staff0Tops+f0,staff1Tops+f1)
+  
+    @cachedProperty
     def featureIdx(self):
         #w = self.agent.getLineWidth()
         h1,h2 = self.getBarHCoords()
@@ -431,28 +415,6 @@ class BarCandidate(object):
         # print('mean interstaffline left from staffs',interStaffLeft)
         # print('mean interstaffline right from staffs',interStaffRight)
         return (barStaff0,barStaff1,aboveBar,belowBar,staffLeft,staffRight,interStaffLeft,interStaffRight,interStaff)
-
-    @cachedProperty
-    def getVerticalStaffLinePositions(self):
-        # approximate system top and bottom (based on global staff detection)
-        system0Top = self.system.rotator.rotate(self.system.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
-        system1Bot = self.system.rotator.rotate(self.system.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
-        sysHeight = (system1Bot-system0Top)
-        hhalf = int(sysHeight*self.heightFactor/2.)
-        sld = self.system.staffs[0].getStaffLineDistance()
-        krng = range(-int(nu.ceil(.5*sld)),int(nu.ceil(.5*sld)))
-        hsums = nu.sum(self.neighbourhood,1)
-        hslw = int(nu.floor(.5*self.system.getStaffLineWidth()))
-
-        inStaff = nu.arange(nu.round(self.system.getStaffLineWidth()))
-
-        staff0Tops = hhalf-.5*sysHeight-hslw+nu.arange(5)*sld
-        staff1Tops = hhalf+.5*sysHeight-hslw-nu.arange(4,-1,-1)*sld
-        staff0Rows = nu.round(nu.array([s+inStaff for s in staff0Tops]).flat[:]).astype(nu.int)
-        staff1Rows = nu.round(nu.array([s+inStaff for s in staff1Tops]).flat[:]).astype(nu.int)
-        f0 = krng[nu.argmax([nu.sum(hsums[staff0Rows+k]) for k in krng])]
-        f1 = krng[nu.argmax([nu.sum(hsums[staff1Rows+k]) for k in krng])]
-        return nu.append(staff0Tops+f0,staff1Tops+f1)
     
 if __name__ == '__main__':
     pass
