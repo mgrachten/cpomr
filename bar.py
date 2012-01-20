@@ -47,7 +47,6 @@ class BarCandidate(object):
 
     def refine(self):
         # vertically adjust neighbourhood to center system
-        print(self.vCorrection)
         self.neighbourhood = self._getNeighbourhood(nu.array((self.vCorrection,0.0)))
         if self.neighbourhood == None:
             return False

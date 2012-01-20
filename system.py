@@ -8,6 +8,7 @@ from agent import makeAgentClass, AgentPainter, assignToAgents, mergeAgents
 from utils import selectColumns
 from imageUtil import getAntiAliasedImg, smooth
 from bar import BarCandidate
+from barEval import isBar
 
 def sortBarAgents(agents):
     agents.sort(key=lambda x: -x.score)
@@ -185,7 +186,7 @@ class System(object):
         return [a for a in agents if a.score > 1 and a.age > .1*K]
 
     #@cachedProperty
-    def getBars(self,acc,gt):
+    def getBars(self,acc=None,gt=None):
         # get barcandidates (excluding those without a valid neighbourhood)
         barCandidates = [bc for bc in self.barCandidates if bc.estimatedType != None]
         lw = nu.mean([bc.agent.getLineWidth() for bc in barCandidates])
@@ -211,8 +212,8 @@ class System(object):
         barCandidates = bc
 
         print('barCandidates')
-        bids = []
-        gtidx = set([])
+        #bids = []
+        #gtidx = set([])
         for i,b in enumerate(barCandidates):
             print('system/bar',self.n,i)
             ap1 = AgentPainter(b.neighbourhood)
@@ -223,21 +224,8 @@ class System(object):
             for bhc in b.barHCoordsLocal:
                 ap1.paintVLine(nu.round(bhc),step=2,color=(255,0,0))
             fn = os.path.splitext(os.path.basename(self.scrImage.fn))[0]
-            ap1.writeImage('{2}-bar-{0:03d}-{1:03d}.png'.format(self.n,i,fn))
-            nu.savetxt('/tmp/{2}-bar-{0:03d}-{1:03d}.txt'.format(self.n,i,fn),
-                       nu.column_stack((b.diffSums,b.weights*b.diffSums,
-                                        b.curve,
-                                        nu.sum(b.approximateNeighbourhood.astype(nu.float),0)[:-1])))
-            key = '{2}-bar-{0:03d}-{1:03d}.txt'.format(self.n,i,fn)
-            center = self.rotator.derotate(b.rotator.derotate(nu.array([(0,0)])))
-            dists = nu.sum((gt-center)**2,1)**.5
-            closest = nu.argmin(dists)
-            gtidx.add(closest)
-            d = nu.abs(center[0,1]-gt[closest,1])
             name = '{2}-bar-{0:03d}-{1:03d}.txt'.format(self.n,i,fn)
-            bids.append([name,closest,d])
-            print('center',center,gt[closest,:],dists[closest],d)
-            acc[name] = {
+            barDict = {
                 'img': b.neighbourhood.astype(nu.float),
                 'position': b.estimatedType.__name__,
                 'staffWidth':self.getStaffLineWidth(),
@@ -245,7 +233,37 @@ class System(object):
                 'hcoords': b.barHCoordsLocal,
                 'vcoords': b.barVCoordsLocal
                 }
+            good = isBar(name,barDict)
+            print('is bar?',good)
+            prefix = '/tmp/good/' if good else '/tmp/bad/'
+            ap1.writeImage('{3}{2}-bar-{0:03d}-{1:03d}.png'.format(self.n,i,fn,prefix),True)
+            nu.savetxt('/tmp/{2}-bar-{0:03d}-{1:03d}.txt'.format(self.n,i,fn),
+                       nu.column_stack((b.diffSums,b.weights*b.diffSums,
+                                        b.curve,
+                                        nu.sum(b.approximateNeighbourhood.astype(nu.float),0)[:-1])))
+            if acc != None:
+                key = '{2}-bar-{0:03d}-{1:03d}.txt'.format(self.n,i,fn)
+                center = self.rotator.derotate(b.rotator.derotate(nu.array([(0,0)])))
+                dists = nu.sum((gt-center)**2,1)**.5
+                closest = nu.argmin(dists)
+                gtidx.add(closest)
+                d = nu.abs(center[0,1]-gt[closest,1])
+                name = '{2}-bar-{0:03d}-{1:03d}.txt'.format(self.n,i,fn)
+                bids.append([name,closest,d])
+                print('center',center,gt[closest,:],dists[closest],d)
+    
+                acc[name] = {
+                    'img': b.neighbourhood.astype(nu.float),
+                    'position': b.estimatedType.__name__,
+                    'staffWidth':self.getStaffLineWidth(),
+                    'staffTops':b.getVerticalStaffLinePositions,
+                    'hcoords': b.barHCoordsLocal,
+                    'vcoords': b.barVCoordsLocal
+                    }
         
+        if True:
+            return True
+
         bidx = nu.argsort([x[2] for x in bids])
         for i in bidx:
             if bids[i][2] < 60 and bids[i][1] in gtidx:

@@ -359,10 +359,13 @@ class AgentPainter(object):
         self.paintSlots = nu.zeros(self.maxAgents,nu.bool)
         self.agents = {}
 
-    def writeImage(self,fn):
+    def writeImage(self,fn,absolute=False):
         #print(nu.min(img),nu.max(img))
         self.img = self.img.astype(nu.uint8)
-        fn = os.path.join('/tmp',os.path.splitext(os.path.basename(fn))[0]+'.png')
+        if absolute:
+            fn = fn
+        else:
+            fn = os.path.join('/tmp',os.path.splitext(os.path.basename(fn))[0]+'.png')
         print(fn)
         writeImageData(fn,self.img.shape[1:],self.img[0,:,:],self.img[1,:,:],self.img[2,:,:])
 

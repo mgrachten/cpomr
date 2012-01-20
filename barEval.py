@@ -52,13 +52,8 @@ def evalBar(name,info):
     sums3 = sums3/(255*len(interStaffX))
     crit = nu.sum(weights*sums)
     crit3 = nu.sum(weights*sums3)
-    #print('w',w)
-    if info['bar'] == False and crit < .05:
-        print(name,crit,getCrit1b(info))
-    if info['bar'] == True and crit > .3:
-        print(name,crit,getCrit1ab(info))
-    nu.savetxt('/tmp/b/{0}'.format(name),img[intraStaffX,:][:,intraStaffY])
-    nu.savetxt('/tmp/l/{0}'.format(name),nu.column_stack((sums,weights,sums*weights)))
+    #nu.savetxt('/tmp/b/{0}'.format(name),img[intraStaffX,:][:,intraStaffY])
+    #nu.savetxt('/tmp/l/{0}'.format(name),nu.column_stack((sums,weights,sums*weights)))
     return [crit,crit3]+getCrit1ab(info)
     #nu.array([x for x in product(intraStaff,nu.arange(h0,h1-1))])
 
@@ -107,8 +102,9 @@ def logReg(instance):
     class0 = nu.array([-9.08,-0.93,17.34,7.94,-1.42,-3.49])
     return nu.dot(nu.array(instance),class0)+c0intercept
 
-def isBar(barCandidate):
-    pass
+def isBar(name,info):
+    eb = evalBar(name,info)
+    return logReg(eb) > 0
 
 if __name__ == '__main__':
     datfiles = sys.argv[1:]

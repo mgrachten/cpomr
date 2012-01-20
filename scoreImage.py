@@ -124,33 +124,16 @@ class ScoreImage(object):
         barCandidates = []
         acc = {}
         fn = os.path.splitext(os.path.basename(self.fn))[0]
-        groundtruthfile = '/home/maarten/Desktop/mephistoWaltz1/{0}.txt'.format(fn)
-        gt = nu.loadtxt(groundtruthfile)[:,(1,0)]
+        #groundtruthfile = '/home/maarten/Desktop/mephistoWaltz1/{0}.txt'.format(fn)
+        #gt = nu.loadtxt(groundtruthfile)[:,(1,0)]
         for system in self.getSystems():
             if True: #i==1: 
                 sys.stdout.write('drawing system {0}\n'.format(system.n))
                 sys.stdout.flush()
-                #system.dodraw = True
-                #system.draw()
-                #sysSegs.append(system.correctedImgSegment)
-                #barAgents = [x.agent for x in system.barCandidates]
-                #barAgents = [x.agent for x in system.getBars()]
-                #barAgents.sort(key=lambda x: x.getDrawMean()[1])
-                acc = system.getBars(acc,gt)
-                         
-                # for j,a in enumerate(barAgents):
-                #     self.ap.register(a)
-                #     b0 = system.getTop()-system.rotator.derotate(a.getDrawMean().reshape((1,2)))[0,0]
-                #     b1 = system.getBottom()-system.rotator.derotate(a.getDrawMean().reshape((1,2)))[0,0]
-                #     #self.ap.drawAgent(a,-300,300,system.rotator)
-                #     self.ap.drawText(#'{0:02d}({1:02d}:{2:02d})'.format(k,i,j),
-                #         '{0:02d} ({1:02d})'.format(k,j),
-                #                      nu.array((system.getTop(),a.getDrawMean()[1])),
-                #                      size=14,color=(255,0,0),alpha=.8)
-                #     k+=1
-                #    self.ap.drawAgent(a,int(b0),int(b1),system.rotator)
-        with open('/tmp/{0}-acc.dat'.format(fn),'w') as f:
-            pickle.dump(acc,f)
+                #acc = system.getBars(acc,gt)
+                system.getBars()
+        #with open('/tmp/{0}-acc.dat'.format(fn),'w') as f:
+        #    pickle.dump(acc,f)
         if True:
             return True
 
