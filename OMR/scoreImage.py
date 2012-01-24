@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys,os, pickle
+import sys,os, pickle, logging
 import numpy as nu
 from utilities import cachedProperty, getter
 from imageUtil import writeImageData, getPattern, findValleys, smooth, normalize
@@ -13,21 +13,9 @@ from staff import Staff
 from bar import BarCandidate as bc
 from itertools import chain
 
-def selectOpenCloseBarsNew(systems):
-    """obsolete"""
-    lrdsums = []
-    for i,system in enumerate(systems):
-        bc = system.barCandidates
-        sld = system.getStaffLineDistance()
-        lrdsums.extend([b.getLeftRightAbsDiffSums() for j,b in enumerate(system.barCandidates)])
-    lrdsums = nu.array(lrdsums)
-    lrdsums = lrdsums/nu.median(lrdsums,0)
-    n = nu.column_stack((lrdsums,lrdsums[:,0]/lrdsums[:,1],lrdsums[:,1]/lrdsums[:,0]))
-    nu.savetxt('/tmp/s.txt',n)
-    #print(n)
-
 class ScoreImage(object):
     def __init__(self,fn):
+        self.log = logging.getLogger(__name__)
         self.fn = fn
         self.typicalNrOfSystemPerPage = 6
         self.maxAngle = 1.5/180.
@@ -38,14 +26,12 @@ class ScoreImage(object):
 
     @getter
     def getImg(self):
-        print('Loading image...'),
-        sys.stdout.flush()
+        self.log.info('Loading image...')
         try:
             img = 255-getPattern(self.fn,False,False)
         except IOError as e: 
-            print('problem')
+            self.log.error('Problem loading image...')
             raise e
-        print('Done')
         img[img< self.bgThreshold] = 0
         return img
 
@@ -59,14 +45,12 @@ class ScoreImage(object):
         # larger than thresholdPropOfMax times the largest ASD over all staffs
         #thresholdPropOfMax = .75
         maxStaffLineDistDev = .05
-        print('original nr of staffs',len(staffs))
+        self.log.info('Original nr of staffs: {0}'.format(len(staffs)))
         slDists = nu.array([staff.getStaffLineDistance() for staff in staffs])
-        print('avg staff line distance per staff:')
-        print(slDists)
+        #log.info('avg staff line distance per staff:')
         # take the largest avg staff distance as the standard,
         # this discards mini staffs
         medDist = nu.median(slDists)
-        print('staff line distances')
         staffs = [staff for staff in staffs if
                   nu.sum([nu.abs(x-medDist) for x in 
                           staff.getStaffLineDistances()])/(medDist*5) < maxStaffLineDistDev]
@@ -76,7 +60,7 @@ class ScoreImage(object):
         #print(slDistStds)
         #medStd = nu.median(slDistStds)
         #staffs = list(nu.array(staffs)[slDistStds <= .04*maxDist])
-        print('new nr of staffs',len(staffs))
+        self.log.info('New nr of staffs: {0}'.format(len(staffs)))
         return staffs
 
     @getter
@@ -86,21 +70,19 @@ class ScoreImage(object):
             self.ap.paintHLine(vs.bottom)
             x = nu.arange(vs.top,vs.bottom)
             #self.ap.paintRav(nu.column_stack((x,i*2*nu.ones(len(x)))),color=(10,10,10))
-            print('vs',i,vs.top,vs.bottom)
-            print('Processing staff segment {0}'.format(i))
+            self.log.info('Processing staff segment {0}'.format(i))
             #vs.draw = i==2
             staffs.extend([Staff(self,s,vs.top,vs.bottom) for s in vs.staffLines])
         staffs = self.selectStaffs(staffs)
         for staff in staffs:
-            print(staff)
+            #self.log.info(staff)
             staff.draw()
         #self.ap.drawText('Maarten Grachten',pos=(230,200),size=30)
         self.ap.writeImage('tst.png')
         self.ap.reset()
         if len(staffs)%2 != 0:
-            print('WARNING: detected unequal number of staffs!')
-            print(self.fn)
-            print('TODO: retry to find an equal number of staffs')
+            self.log.warn('Detected unequal number of staffs for file:\n\t{0}'.format(self.fn))
+            self.log.info('TODO: retry to find an equal number of staffs')
 
         return staffs
 
@@ -128,8 +110,9 @@ class ScoreImage(object):
         #gt = nu.loadtxt(groundtruthfile)[:,(1,0)]
         for system in self.getSystems():
             if True: #i==1: 
-                sys.stdout.write('drawing system {0}\n'.format(system.n))
-                sys.stdout.flush()
+                self.log.info('Drawing system {0}'.format(system.n))
+                #sys.stdout.write('drawing system {0}\n'.format(system.n))
+                #sys.stdout.flush()
                 #acc = system.getBars(acc,gt)
                 system.getBars()
         #with open('/tmp/{0}-acc.dat'.format(fn),'w') as f:

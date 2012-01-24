@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import sys,os
+import logging
 import numpy as nu
 from utilities import cachedProperty, getter
 from agent import assignToAgents, mergeAgents, makeAgentClass
@@ -22,7 +23,8 @@ def identifyNonStaffSegments(vertSegments,N,M):
     #nvhsums = nu.column_stack((nvhsums,vhsums[:,-1]))
     #nvhsums = nu.vstack((nvhsums,nu.append(-ref,-1)))
     #nu.savetxt('/tmp/ns.txt',nvhsums,fmt='%d')
-    print('of {0} segments, items {1} were identified as non-staff'.format(len(vertSegments),nonStaff))
+    log = logging.getLogger(__name__)
+    log.info('Of {0} segments, items {1} were identified as non-staff'.format(len(vertSegments),nonStaff))
     return nonStaff
 
 def getOffset(v1,v2,dx,maxAngle):
@@ -76,7 +78,8 @@ class VerticalSegment(object):
                                     minScore=-2,
                                     offset=self.top)
         f0 = os.path.splitext(self.scrImage.fn)[0]
-        print('default angle for this staff',defAngle)
+        log = logging.getLogger(__name__)
+        log.info('Default angle for this staff: {0:.5f} rad/PI'.format(defAngle))
         stop = False
         finalStage = False
         nFinalRuns = 20

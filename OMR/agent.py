@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys,os
+import sys,os,logging
 from scipy import signal,cluster,spatial
 import numpy as nu
 from imageUtil import getImageData, writeImageData, makeMask, normalize, jitterImageEdges,getPattern
@@ -25,7 +25,8 @@ def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False,maxW
     elif horz is not None:
         candidates = [[nu.array([vert,horz]) for vert in vertz] for vertz in candidates]
     else:
-        print('error, need to specify vert or horz')
+        log = logging.getLogger(__name__)
+        log.critical('Need to specify vert or horz')
     unadopted = []
     bids = None
     newagents =[]
@@ -37,36 +38,21 @@ def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False,maxW
         for i,c in enumerate(candidates):
             bids[i,:] = nu.array([nu.abs(a.bid(*c)) for a in agents])
         sortedBets = nu.argsort(bids,1)
-        if False: #vert == 326:
-            for j,a in enumerate(agents):
-                print('{0} {1}'.format(j,a))
-            print('candidates',candidates)
-            print(sortedBets)
-            print(bids[-1,sortedBets[-1,:]])
-            sys.exit()
         cidx = nu.argsort(sortedBets[:,0])
         adopters = set([])
         for i in cidx:
             bestBidder = sortedBets[i,0]
             bestBet = bids[i,bestBidder]
-            #print('sortedBets')
-            #print(sortedBets[i,:])
-            #print(bids[i,sortedBets[i,:]])
             bidderHas = bestBidder in adopters
             if bestBet <= agents[bestBidder].maxError and not bidderHas:
-                # nu.sum((candidates[i][0]-candidates[i][-1])**2)**.5 < maxWidth and 
-                #print('{0} goes to {1}'.format(candidates[i][0][1],agents[bestBidder].id))
                 agents[bestBidder].award(*candidates[i])
                 adopters.add(bestBidder)
                 newagents.append(agents[bestBidder])
             else:
-                #print('{0} unadopted, best {1}, available: {2}'.format(candidates[i][0][1],
-                #                                                       agents[bestBidder].id,bidderHas))
                 unadopted.append(i)
         newagents.extend([agents[x] for x in set(range(len(agents))).difference(adopters)])
     if not fixAgents:
         for i in unadopted:
-            #print('unadopted',candidates[i])
             if len(candidates[i]) == 1 or (len(candidates[i]) >1 and (candidates[i][-1][0]-candidates[i][0][0]) <= M/50.):
                 # only add an agent if we are on a small section
                 newagent = AgentType(nu.mean(nu.array(candidates[i]),0))
@@ -259,7 +245,8 @@ class Agent(object):
         b = (ytilde-slope*xtilde)
         # special case 1: parallel lines
         if slope == nu.tan(nu.pi*self.angle):
-            print('parallel',slope)
+            log = logging.getLogger(__name__)
+            log.info('Parallel lines detected')
             return None
 
         # special case 2: vertical line
@@ -358,7 +345,7 @@ class AgentPainter(object):
         self.colors = makeColors(self.maxAgents)
         self.paintSlots = nu.zeros(self.maxAgents,nu.bool)
         self.agents = {}
-
+        self.log = logging.getLogger(__name__)
     def writeImage(self,fn,absolute=False):
         #print(nu.min(img),nu.max(img))
         self.img = self.img.astype(nu.uint8)
@@ -366,7 +353,7 @@ class AgentPainter(object):
             fn = fn
         else:
             fn = os.path.join('/tmp',os.path.splitext(os.path.basename(fn))[0]+'.png')
-        print(fn)
+        self.log.info('Writing image to file: {0}'.format(fn))
         writeImageData(fn,self.img.shape[1:],self.img[0,:,:],self.img[1,:,:],self.img[2,:,:])
 
     def isRegistered(self,agent):
@@ -377,7 +364,7 @@ class AgentPainter(object):
             return True
         available = nu.where(self.paintSlots==0)[0]
         if len(available) < 1:
-            print('no paint slots available')
+            self.log.warn('No paint slots available')
             return False
         #print('registring {0}'.format(agent.id))
         #print(agent.__hash__())
@@ -392,7 +379,7 @@ class AgentPainter(object):
             del self.agents[agent]
 
         else:
-            sys.stderr.write('Warning, unknown agent\n')
+            self.log.warn('Unknown agent\n')
         
     def reset(self):
         self.img = self.imgOrig.copy()
@@ -516,8 +503,6 @@ class AgentPainter(object):
         b = int(min(N-1,xmax+nu.floor(rectSize/2.)))
         l = int(max(0,ymin-nu.floor(rectSize/2.)))
         r = int(min(M-1,ymax+nu.floor(rectSize/2.)))
-        #self.img[:,:,int(ymin)] = (1-alpha)*self.img[:,:,int(ymin)]+alpha*0
-        #self.img[:,int(xmin),:] = (1-alpha)*self.img[:,int(xmin),:]+alpha*0
         for i,c in enumerate(color):
             self.img[i,t:b,l] = c
             self.img[i,t:b,r] = c
@@ -526,63 +511,4 @@ class AgentPainter(object):
 
 
 if __name__ == '__main__':
-    StaffAgent = makeAgentClass(targetAngle=.005,
-                                maxAngleDev=5/180.,
-                                maxError=20,
-                                minScore=-2,
-                                offset=0)
-    partner = nu.array((3,0))
-    
-    #high
-    #x01 = nu.array([200.0,200])
-    #x11 = nu.array([200.0,205])
-    #low
-    x = nu.array([(40,10,3),
-                  (45,510,3),
-                  (53,1010,3),
-                  (50,1050,3),
-                  (42,850,30)
-                  ])
-
-    N,M = 1000,2000
-    img = nu.zeros((N,M))
-    
-    def getPoints(i):
-        return x[i,:2],x[i,:2]+nu.array((x[i,2],0))
-
-    for i in range(x.shape[0]):
-        img[x[i,0],x[i,1]] = 255
-        img[x[i,0]+x[i,2],x[i,1]] = 255
-    ap = AgentPainter(img)
-    a0 = StaffAgent(*getPoints(0))
-    ap.writeImage('hoi00a.png')
-    ap.register(a0)
-
-    ap.drawAgentGood(a0,-2000,2000)
-    ap.writeImage('hoi00b.png')
-    
-    for i in range(1,x.shape[0]):
-        print(a0)
-        ap.reset()
-        print('bid',a0.bid(*getPoints(i)))
-        print('award',a0.award(*getPoints(i)))
-        print('pass?',a0.tick())
-        ap.drawAgentGood(a0,-2000,2000)
-        ap.writeImage('hoi{0:02d}.png'.format(i))
-        print('')
-
-    print(a0)
-    print('d',a0.getIntersection(*getPoints(-1)))
-
-    print('\n\n')
-    sys.exit()
-
-    print('')
-    y1 = nu.array((400,2000))
-    #print('a',a0._getAngle(y1))
-    print('bid',a0.bid(y1,y1+partner))
-    print('award',a0.award(y1,y1+nu.array((3,0))))
-    print(a0)
-    print('pass?',a0.tick())
-    
-    
+    pass

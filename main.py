@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
-import sys,os
+import sys,os, logging
 import numpy as nu
-from scoreImage import ScoreImage
+from OMR.scoreImage import ScoreImage
+
+logging.basicConfig(format='%(levelname)s: [%(name)s] %(message)s',level=logging.INFO)
 
 if __name__ == '__main__':
     fn = sys.argv[1]

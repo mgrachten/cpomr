@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys
+import sys,logging
 import numpy as nu
 from utilities import getter
 
@@ -12,18 +12,18 @@ def sortStaffLineAgents(agents,k=10):
         return agents
 
     meanScorePerSystem = [nu.mean(scores[i:i+k]) for i in range(0,N,k)]
-    print(meanScorePerSystem)
     dms = nu.diff(meanScorePerSystem)
     nsystems = nu.argmin(dms)+1
-    print('estimating ',nsystems,'groups,',k*nsystems,'stafflines')
+    log = logging.getLogger(__name__)
+    log.info('Estimating {0} group(s), {1} stafflines'.format(nsystems,k*nsystems))
     na = agents[:k*nsystems]
-    print('keeping',len(na),'agents')
+    log.info('Keeping {0} agents'.format(len(na)))
     return na
 
 def assessStaffLineAgents(iagents,M,nPerStaff):
     agents = sortStaffLineAgents(iagents,nPerStaff)
-    for a in agents:
-        print(a)
+    #for a in agents:
+    #    print(a)
     meansAngles = nu.array([(a.mean[0],a.mean[1],a.angle) for a in agents])
     x = meansAngles[:,0]+(M/2-meansAngles[:,1])*nu.tan(meansAngles[:,2]*nu.pi)
     xs = nu.sort(x)

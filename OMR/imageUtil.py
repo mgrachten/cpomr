@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys,os
+import sys,os,logging
 from PIL import Image
 import numpy as nu
 from scipy import signal
@@ -134,8 +134,9 @@ def getPattern(filename,useMask=True,alphaAsMaskIfAvailable=True):
         # CHECK IF TRANSPARENCY IS 0 OR 255!!!
         mask = nu.array(fimg[:,-1],nu.float)/255
         trivialAlpha = nu.max(mask)<=nu.min(mask)
+        log = logging.getLogger(__name__)
         if trivialAlpha:
-            sys.stderr.write('Warning: pattern {0} has a trivial\nalpha-channel. Using standard masking procedure instead.\n'.format(filename))
+            log.info('Pattern {0} has a trivial\nalpha-channel. Using standard masking procedure instead.\n'.format(filename))
             mask = makeMask(255-img.reshape(s)).reshape(img.shape)
 
     if useMask:
@@ -167,8 +168,9 @@ def getImageAndMask(filename,useMask=True,alphaAsMaskIfAvailable=True):
         # CHECK IF TRANSPARENCY IS 0 OR 255!!!
         mask = nu.array(fimg[:,-1],nu.float)/255
         trivialAlpha = nu.max(mask)<=nu.min(mask)
+        log = logging.getLogger(__name__)
         if trivialAlpha:
-            sys.stderr.write('Warning: pattern {0} has a trivial\nalpha-channel. Using standard masking procedure instead.\n'.format(filename))
+            log.info('Pattern {0} has a trivial\nalpha-channel. Using standard masking procedure instead.\n'.format(filename))
             mask = makeMask(255-img.reshape(s)).reshape(img.shape)
 
     if useMask:

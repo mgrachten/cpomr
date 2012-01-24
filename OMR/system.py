@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys,os
+import sys,os,logging
 import numpy as nu
 from utils import Rotator
 from utilities import cachedProperty, getter
@@ -8,7 +8,7 @@ from agent import makeAgentClass, AgentPainter, assignToAgents, mergeAgents
 from utils import selectColumns
 from imageUtil import getAntiAliasedImg, smooth
 from bar import BarCandidate
-from barEval import isBar
+#from barEval import isBar
 
 def sortBarAgents(agents):
     agents.sort(key=lambda x: -x.score)
@@ -17,11 +17,12 @@ def sortBarAgents(agents):
     if len(scores) > 1:
         hyp = nu.argmin(nu.diff(scores))
         #print(scores)
-        print('guessing:',hyp+1)
+        #print('guessing:',hyp+1)
     return hyp+1
 
 class System(object):
     def __init__(self,scoreImage,staffs,n=0):
+        self.log = logging.getLogger(__name__)
         self.scrImage = scoreImage
         self.staffs = staffs
         self.barPoints = []
@@ -136,8 +137,8 @@ class System(object):
             agents.extend(self.getBarLinesPart(hpart,vbins,lefts[i],rights[i],i))
         agents,died = mergeAgents(agents)
         agents.sort(key=lambda x: -x.score)
-        for a in agents:
-            print(a)
+        #for a in agents:
+        #    print(a)
         agents.sort(key=lambda x: x.getDrawMean()[1])
 
         return agents
@@ -157,7 +158,6 @@ class System(object):
         ap = AgentPainter(self.correctedImgSegment)
         ap.paintVLine(yoffset,step=4,color=(50,150,50))
         ap.paintVLine(rightBorder,step=4,color=(50,150,50))
-        #draw = self.dodraw
         draw = False
         K = int(.1*len(rows))
         for i,r in enumerate(rows[:K]):
@@ -171,7 +171,6 @@ class System(object):
                 agentsnew,d = mergeAgents(agentsnew)
                 died.extend(d)
             agents = agentsnew
-            draw = False#self.n==0 and j==4
             if draw:
                 ap.reset()
                 ap.paintHLine(r,step=2,color=(50,50,50))
@@ -211,11 +210,9 @@ class System(object):
                     bc.append(b)
         barCandidates = bc
 
-        print('barCandidates')
-        #bids = []
-        #gtidx = set([])
+        #self.log.info('barCandidates')
         for i,b in enumerate(barCandidates):
-            print('system/bar',self.n,i)
+            #print('system/bar',self.n,i)
             ap1 = AgentPainter(b.neighbourhood)
             for p in b.getVerticalStaffLinePositions:
                 ap1.paintHLine(nu.floor(p),step=2,color=(255,0,0))
@@ -225,54 +222,7 @@ class System(object):
                 ap1.paintVLine(nu.round(bhc),step=2,color=(255,0,0))
             fn = os.path.splitext(os.path.basename(self.scrImage.fn))[0]
             name = '{2}-bar-{0:03d}-{1:03d}.txt'.format(self.n,i,fn)
-            barDict = {
-                'img': b.neighbourhood.astype(nu.float),
-                'position': b.estimatedType.__name__,
-                'staffWidth':self.getStaffLineWidth(),
-                'staffTops':b.getVerticalStaffLinePositions,
-                'hcoords': b.barHCoordsLocal,
-                'vcoords': b.barVCoordsLocal
-                }
-            good = isBar(name,barDict)
-            print('is bar?',good)
-            prefix = '/tmp/good/' if good else '/tmp/bad/'
-            ap1.writeImage('{3}{2}-bar-{0:03d}-{1:03d}.png'.format(self.n,i,fn,prefix),True)
-            nu.savetxt('/tmp/{2}-bar-{0:03d}-{1:03d}.txt'.format(self.n,i,fn),
-                       nu.column_stack((b.diffSums,b.weights*b.diffSums,
-                                        b.curve,
-                                        nu.sum(b.approximateNeighbourhood.astype(nu.float),0)[:-1])))
-            if acc != None:
-                key = '{2}-bar-{0:03d}-{1:03d}.txt'.format(self.n,i,fn)
-                center = self.rotator.derotate(b.rotator.derotate(nu.array([(0,0)])))
-                dists = nu.sum((gt-center)**2,1)**.5
-                closest = nu.argmin(dists)
-                gtidx.add(closest)
-                d = nu.abs(center[0,1]-gt[closest,1])
-                name = '{2}-bar-{0:03d}-{1:03d}.txt'.format(self.n,i,fn)
-                bids.append([name,closest,d])
-                print('center',center,gt[closest,:],dists[closest],d)
-    
-                acc[name] = {
-                    'img': b.neighbourhood.astype(nu.float),
-                    'position': b.estimatedType.__name__,
-                    'staffWidth':self.getStaffLineWidth(),
-                    'staffTops':b.getVerticalStaffLinePositions,
-                    'hcoords': b.barHCoordsLocal,
-                    'vcoords': b.barVCoordsLocal
-                    }
-        
-        if True:
-            return True
-
-        bidx = nu.argsort([x[2] for x in bids])
-        for i in bidx:
-            if bids[i][2] < 60 and bids[i][1] in gtidx:
-                acc[bids[i][0]]['bar'] = True
-                gtidx.remove(bids[i][1]) 
-            else:
-                acc[bids[i][0]]['bar'] = False
-
-        return acc
+            ap1.writeImage('{2}-bar-{0:03d}-{1:03d}.png'.format(self.n,i,fn))
 
     @cachedProperty
     def barCandidates(self):
