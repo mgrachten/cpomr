@@ -26,7 +26,7 @@ class ScoreImage(object):
 
     @getter
     def getImg(self):
-        self.log.info('Loading image...')
+        self.log.info('Loading image {0}'.format(self.fn))
         try:
             img = 255-getPattern(self.fn,False,False)
         except IOError as e: 
