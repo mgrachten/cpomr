@@ -4,7 +4,8 @@ import sys,os,logging
 import numpy as nu
 from utils import Rotator
 from utilities import cachedProperty, getter
-from agent import makeAgentClass, AgentPainter, assignToAgents, mergeAgents
+from agent import makeAgentClass, assignToAgents, mergeAgents
+from agentPainter import AgentPainter
 from utils import selectColumns
 from imageUtil import getAntiAliasedImg, smooth
 from bar import BarCandidate

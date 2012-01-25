@@ -6,7 +6,7 @@ from utilities import cachedProperty, getter
 from imageUtil import writeImageData, getPattern, findValleys, smooth, normalize
 from scipy.stats import distributions
 
-from agent import AgentPainter
+from agentPainter import AgentPainter
 from verticalSegment import VerticalSegment, identifyNonStaffSegments
 from system import System
 from staff import Staff

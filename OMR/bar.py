@@ -6,7 +6,7 @@ from itertools import chain,product
 from utilities import getter,cachedProperty
 from imageUtil import getAntiAliasedImg,findValleys,findPeaks,smooth
 from utils import Rotator
-from agent import AgentPainter
+from agentPainter import AgentPainter
 import scipy.stats
 
 class Bar(object):
@@ -43,7 +43,6 @@ class BarCandidate(object):
         self.heightFactor = 1.2 # neighbourhood is heightFactor times systemHeight high
         self.rotator = None
         self.doubleGapFactor = .1 # treat as double bar if diffSums has an internal gap > (dgp * main gap)
-
 
     def refine(self):
         # vertically adjust neighbourhood to center system
