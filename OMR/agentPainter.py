@@ -141,6 +141,12 @@ class AgentPainter(object):
                 drp = rotator.derotate(drp)
             self.paintRav(drp,c1)
 
+    def paintLineSegment(self,coord1,coord2,color,alpha=1):
+        #x1=30.5;x2=10;r=int(nu.ceil(nu.abs(x2-x1))); 
+        l = nu.sum((coord1-coord2)**2)**.5
+        coords = nu.column_stack((nu.linspace(coord1[0],coord2[0],l),nu.linspace(coord1[1],coord2[1],l)))
+        self.paintRav(coords,color,alpha)
+
     def paintRav(self,coords,color,alpha=1):
         idx = (self.img.shape[2]*nu.round(coords[:,0])+nu.round(coords[:,1])).astype(nu.int64)
         self.img[0,:,:].flat[idx] = nu.minimum(255,nu.maximum(0,(1-alpha)*self.img[0,:,:].flat[idx]+alpha*color[0])).astype(nu.uint8)
