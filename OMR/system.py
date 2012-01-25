@@ -189,9 +189,11 @@ class System(object):
     def getBarLines(self,acc=None,gt=None):
         # get barcandidates (excluding those without a valid neighbourhood)
         barCandidates = [bc for bc in self.barCandidates if bc.estimatedType != None]
+        
         lw = nu.mean([bc.agent.getLineWidth() for bc in barCandidates])
         lwFactor = 3
         bc = []
+        # merge barcandidates that are close together (i.e. double bars)
         for b in barCandidates:
             if b.refine() != False:
                 if len(bc) > 0:
@@ -210,10 +212,11 @@ class System(object):
                 else:
                     bc.append(b)
         barCandidates = bc
+        self.log.info('Found {0} bar lines in system {1}'.format(len(barCandidates),self.n))
+        if True:
+            return barCandidates
 
-        #self.log.info('barCandidates')
         for i,b in enumerate(barCandidates):
-            #print('system/bar',self.n,i)
             ap1 = AgentPainter(b.neighbourhood)
             for p in b.getVerticalStaffLinePositions:
                 ap1.paintHLine(nu.floor(p),step=2,color=(255,0,0))
