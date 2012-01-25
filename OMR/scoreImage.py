@@ -41,9 +41,14 @@ class ScoreImage(object):
         imin,imax = nu.min(img),nu.max(img)
         istd = nu.std(img)
         imed = nu.median(img)
+        minImageHeight = 1500
+        minImageWidth = minImageHeight*.75
+        if img.shape[1] < minImageWidth:
+            self.log.warn('Image resolution may be too low for accurate OMR, recognition may be slow')
+            self.log.warn('For good results, provide images with a width of at least {0} pixels'.format(int(minImageWidth)))
         if istd == 0:
             self.log.warn('Blank image')
-        #if not 0 <= imin < 256 or not 0 <= imax < 256:
+
         if imed > imin+(imax-imin)/2.:
             self.log.warn('Image appears inverted, Inverting image')
             img = 255-img
