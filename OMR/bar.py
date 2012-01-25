@@ -10,10 +10,13 @@ from agentPainter import AgentPainter
 import scipy.stats
 
 class Bar(object):
-    def __init__(self,i,j,barCandidate):
-        self.bc = barCandidate
-        self.i = i
-        self.j = j
+    def __init__(self,barline1,barline2):
+        self.barline1 = barline1
+        self.barline2 = barline2
+    def getBBs(self):
+        #print(nu.column_stack((self.barline1.barVCoords[nu.array((0,-1))],
+        #                       nu.zeros(2)+self.barline1.barHCoords[-1])))
+        return self.barline1.system.rotator.derotate(self.barline1.barVCoords[nu.array((0,-1))])
 
 
 class LeftBarLine(object): pass
