@@ -152,6 +152,17 @@ class ScoreImage(object):
         ap1.writeImage(self.fn.replace('.png','-corr.png'))
 
 
+    def getBars(self):
+        """
+        Return bounding boxes of bars
+        """
+        barLines = []
+        for system in self.getSystems():
+            #self.log.info('Drawing system {0}'.format(system.n))
+            barLines.extend(system.getBarLines())
+        for i,bl in enumerate(barLines):
+            print(i,bl.estimatedType)
+
     @cachedProperty
     def hSums(self):
         return nu.sum(self.getImg(),1)
