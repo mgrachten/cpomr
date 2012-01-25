@@ -123,7 +123,7 @@ class System(object):
                 for i in range(len(lefts))],lefts,rights
             
     @getter
-    def getBarLines(self):
+    def getBarLineAgents(self):
         """
         strategy:
         * run barline detection for different (slightly overlapping) segements
@@ -135,7 +135,7 @@ class System(object):
         hparts,lefts,rights = self.getImgHParts(hbins,overlap)
         agents = []
         for i,hpart in enumerate(hparts):
-            agents.extend(self.getBarLinesPart(hpart,vbins,lefts[i],rights[i],i))
+            agents.extend(self._getBarLineAgentsPart(hpart,vbins,lefts[i],rights[i],i))
         agents,died = mergeAgents(agents)
         agents.sort(key=lambda x: -x.score)
         #for a in agents:
@@ -144,7 +144,7 @@ class System(object):
 
         return agents
         
-    def getBarLinesPart(self,img,vbins,yoffset,rightBorder,j):
+    def _getBarLineAgentsPart(self,img,vbins,yoffset,rightBorder,j):
         BarAgent = makeAgentClass(targetAngle=.5,
                                   maxAngleDev=4/180.,
                                   maxError=self.getStaffLineWidth()/7.0,
@@ -186,7 +186,7 @@ class System(object):
         return [a for a in agents if a.score > 1 and a.age > .1*K]
 
     #@cachedProperty
-    def getBars(self,acc=None,gt=None):
+    def getBarLines(self,acc=None,gt=None):
         # get barcandidates (excluding those without a valid neighbourhood)
         barCandidates = [bc for bc in self.barCandidates if bc.estimatedType != None]
         lw = nu.mean([bc.agent.getLineWidth() for bc in barCandidates])
@@ -227,8 +227,8 @@ class System(object):
 
     @cachedProperty
     def barCandidates(self):
-        bars = [BarCandidate(self,x) for x in self.getBarLines()]
-        return bars#[x for x in bars if x.neighbourhood != None]
+        bars = [BarCandidate(self,x) for x in self.getBarLineAgents()]
+        return bars
 
     def getSystemWidth(self):
         # this gets cut off from the width, to fit in the page rotated
