@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys
+import sys, logging
 import numpy as nu
 from itertools import chain,product
 from utilities import getter,cachedProperty
@@ -86,6 +86,11 @@ class BarCandidate(object):
         valleys = findValleys(self.curve)
         lpeaks = peaks[peaks <= mid]
         rvalleys = valleys[valleys >= mid]
+        if len(lpeaks) == 0 or len(rvalleys) == 0:
+            log = logging.getLogger(__name__)
+            log.warn('Could not process bar correctly, image resolution may be too low')
+            whalf = self.agent.getLineWidth()/2.
+            return nu.array((mid-whalf,mid+whalf)).astype(nu.int)
         hi = lpeaks[nu.argmax(self.curve[lpeaks])]
         lo = rvalleys[nu.argmin(self.curve[rvalleys])]
         npeaks = peaks[nu.logical_and(peaks>hi,peaks<lo)] 
