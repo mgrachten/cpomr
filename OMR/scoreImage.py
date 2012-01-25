@@ -64,7 +64,7 @@ class ScoreImage(object):
     def selectStaffs(self,staffs):
         # staffs get selected if their avg staffline distance (ASD) is
         # larger than thresholdPropOfMax times the largest ASD over all staffs
-        #thresholdPropOfMax = .75
+
         maxStaffLineDistDev = .05
         slDists = nu.array([staff.getStaffLineDistance() for staff in staffs])
         #log.info('avg staff line distance per staff:')
@@ -75,12 +75,6 @@ class ScoreImage(object):
                   nu.sum([nu.abs(x-medDist) for x in 
                           staff.getStaffLineDistances()])/(medDist*5) < maxStaffLineDistDev]
         origNrStaffs = len(staffs)
-        #staffs = list(nu.array(staffs)[slDists >= thresholdPropOfMax*maxDist])
-        #slDistStds = nu.array([staff.getStaffLineDistanceStd() for staff in staffs])
-        #print('sd staff line distance per staff:')
-        #print(slDistStds)
-        #medStd = nu.median(slDistStds)
-        #staffs = list(nu.array(staffs)[slDistStds <= .04*maxDist])
 
         self.log.info('Selecting {0} staffs from candidate list, discarding {1} staff(s)'.format(len(staffs),
                                                                                          origNrStaffs-len(staffs)))
@@ -88,7 +82,9 @@ class ScoreImage(object):
 
     @getter
     def getStaffs(self):
+        draw = False
         staffs = []
+
         for i,vs in enumerate(self.getStaffSegments()):
             self.ap.paintHLine(vs.bottom)
             x = nu.arange(vs.top,vs.bottom)
@@ -96,16 +92,20 @@ class ScoreImage(object):
             self.log.info('Processing staff segment {0}'.format(i))
             #vs.draw = i==2
             staffs.extend([Staff(self,s,vs.top,vs.bottom) for s in vs.staffLines])
+
         staffs = self.selectStaffs(staffs)
-        for staff in staffs:
-            #self.log.info(staff)
-            staff.draw()
-        #self.ap.drawText('Maarten Grachten',pos=(230,200),size=30)
-        self.ap.writeImage('tst.png')
-        self.ap.reset()
+
         if len(staffs)%2 != 0:
             self.log.warn('Detected unequal number of staffs for file:\n\t{0}'.format(self.fn))
             self.log.info('TODO: retry to find an equal number of staffs')
+
+        if draw:
+            for staff in staffs:
+                #self.log.info(staff)
+                staff.draw()
+            #self.ap.drawText('Maarten Grachten',pos=(230,200),size=30)
+            self.ap.writeImage('tst.png')
+            self.ap.reset()
 
         return staffs
 
@@ -129,15 +129,10 @@ class ScoreImage(object):
         barCandidates = []
         acc = {}
         fn = os.path.splitext(os.path.basename(self.fn))[0]
-        #groundtruthfile = '/home/maarten/Desktop/mephistoWaltz1/{0}.txt'.format(fn)
-        #gt = nu.loadtxt(groundtruthfile)[:,(1,0)]
+
         for system in self.getSystems():
-            if True: #i==1: 
-                self.log.info('Drawing system {0}'.format(system.n))
-                #sys.stdout.write('drawing system {0}\n'.format(system.n))
-                #sys.stdout.flush()
-                #acc = system.getBars(acc,gt)
-                system.getBars()
+            self.log.info('Drawing system {0}'.format(system.n))
+            system.getBarLines()
         #with open('/tmp/{0}-acc.dat'.format(fn),'w') as f:
         #    pickle.dump(acc,f)
         if True:
