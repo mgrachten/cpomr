@@ -15,17 +15,10 @@ class Bar(object):
         self.i = i
         self.j = j
 
-class LeftBar(Bar): 
-    pass
 
-class RightBar(Bar):
-    pass
-
-class MiddleBar(Bar):
-    pass
-
-class DoubleBar(Bar):
-    pass
+class LeftBarLine(object): pass
+class RightBarLine(object): pass
+class MiddleBarLine(object): pass
 
 class BarCandidate(object):
     BAR = 0
@@ -125,19 +118,19 @@ class BarCandidate(object):
             return None
         lrmedian = nu.median(nu.array([x for y in [[bc.leftRightAbsDiffSums for bc in system.barCandidates
                                                     if bc.approximateNeighbourhood != None] 
-                                       for system in self.system.scrImage.getSystems()] for x in y]),0)
+                                       for system in self.system.scrImage.systems] for x in y]),0)
         statistic = nu.array(self.leftRightAbsDiffSums)
         statistic[statistic != 0] /= lrmedian[statistic != 0]
         if statistic[0] < .5:
             if statistic[1] < .5:
                 return None
             else:
-                return LeftBar
+                return LeftBarLine
         else:
             if statistic[1] < .5:
-                return RightBar
+                return RightBarLine
             else:
-                return MiddleBar
+                return MiddleBarLine
     
     def _leftRightAbsDiffSums(self,lrs):
         assert self.approximateNeighbourhood != None
@@ -186,9 +179,9 @@ class BarCandidate(object):
     def vCorrection(self):
         img = self.approximateNeighbourhood.astype(nu.float)
         l,r = self.barHCoordsLocal[nu.array((0,-1))]
-        if self.estimatedType == LeftBar:
+        if self.estimatedType == LeftBarLine:
             img = img[:,l:]
-        elif self.estimatedType == RightBar:
+        elif self.estimatedType == RightBarLine:
             img = img[:,:r]
         staff0Top,staff0Bot = self.system.staffs[0].getTopBottomLeft()
         staff1Top,staff1Bot = self.system.staffs[1].getTopBottomLeft()

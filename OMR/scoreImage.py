@@ -10,7 +10,7 @@ from agentPainter import AgentPainter
 from verticalSegment import VerticalSegment, identifyNonStaffSegments
 from system import System
 from staff import Staff
-from bar import BarCandidate as bc
+from bar import RightBarLine,LeftBarLine,Bar
 from itertools import chain
 
 class ScoreImage(object):
