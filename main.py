@@ -9,5 +9,6 @@ logging.basicConfig(format='%(levelname)s: [%(name)s] %(message)s',level=logging
 if __name__ == '__main__':
     fn = sys.argv[1]
     si = ScoreImage(fn)
-    si.drawImage()
+    #si.drawImage()
+    si.getBars()
 
