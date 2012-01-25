@@ -10,5 +10,6 @@ if __name__ == '__main__':
     fn = sys.argv[1]
     si = ScoreImage(fn)
     #si.drawImage()
-    si.getBars()
+    for b in si.bars:
+        print(b.getBBs())
 

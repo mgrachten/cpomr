@@ -185,8 +185,8 @@ class System(object):
                 agents.sort(key=lambda x: -x.score)
         return [a for a in agents if a.score > 1 and a.age > .1*K]
 
-    #@cachedProperty
-    def getBarLines(self,acc=None,gt=None):
+    @cachedProperty
+    def barLines(self):
         # get barcandidates (excluding those without a valid neighbourhood)
         barCandidates = [bc for bc in self.barCandidates if bc.estimatedType != None]
         

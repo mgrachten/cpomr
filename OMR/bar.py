@@ -74,6 +74,13 @@ class BarCandidate(object):
         return nu.array([staff0Top,staff0Bot,staff1Top,staff1Bot])-staff0Top+offset
 
     @cachedProperty
+    def barVCoords(self):
+        assert self.rotator != None
+        # TODO: check if using zero for other coordinate is the right thing to do
+        # alternative: use HCoords
+        return self.rotator.derotate(nu.column_stack((self.barVCoordsLocal,nu.zeros(self.barVCoordsLocal.shape[0]))))
+
+    @cachedProperty
     def barHCoordsLocal(self):
         mid = self.diffSums.shape[0]/2.0
         self.weights = scipy.stats.norm.pdf(nu.arange(self.diffSums.shape[0]),mid,self.agent.getLineWidth())
@@ -107,6 +114,8 @@ class BarCandidate(object):
     @cachedProperty
     def barHCoords(self):
         assert self.rotator != None
+        # TODO: check if using zero for other coordinate is the right thing to do
+        # alternative: use VCoords
         return self.rotator.derotate(nu.column_stack((nu.zeros(self.barHCoordsLocal.shape[0]),self.barHCoordsLocal)))
 
     @cachedProperty

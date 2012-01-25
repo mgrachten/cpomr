@@ -109,8 +109,8 @@ class ScoreImage(object):
 
         return staffs
 
-    @getter
-    def getSystems(self):
+    @cachedProperty
+    def systems(self):
         staffs = self.getStaffs()
         assert len(staffs)%2 == 0
         return [System(self,(staffs[i],staffs[i+1]),i/2) for i in range(0,len(staffs),2)]
@@ -130,9 +130,9 @@ class ScoreImage(object):
         acc = {}
         fn = os.path.splitext(os.path.basename(self.fn))[0]
 
-        for system in self.getSystems():
+        for system in self.systems:
             self.log.info('Drawing system {0}'.format(system.n))
-            system.getBarLines()
+            system.barLines()
         #with open('/tmp/{0}-acc.dat'.format(fn),'w') as f:
         #    pickle.dump(acc,f)
         if True:
@@ -151,17 +151,44 @@ class ScoreImage(object):
         ap1 = AgentPainter(ssImg)
         ap1.writeImage(self.fn.replace('.png','-corr.png'))
 
+    @cachedProperty
+    def bars(self):
+        """
+        Return bars
+        """
+        bars = []
+        bl = [bl for system in self.systems for bl in system.barLines]
+        N = len(bl)
+        i1 = 0
+        i2 = 1
+        print(len(bl))
+        while i2 < N:
+            print(i1,i2)
+            if (bl[i1].estimatedType != RightBarLine and
+                bl[i2].estimatedType != LeftBarLine):
+                print('bar',i1,i2)
+                bars.append(Bar(bl[i1],bl[i2]))
+                i1 = i2
+                i2 += 1
+            else:
+                if bl[i1].estimatedType == RightBarLine:
+                    i1 += 1
+                i2 += 1
 
-    def getBars(self):
-        """
-        Return bounding boxes of bars
-        """
-        barLines = []
-        for system in self.getSystems():
-            #self.log.info('Drawing system {0}'.format(system.n))
-            barLines.extend(system.getBarLines())
-        for i,bl in enumerate(barLines):
-            print(i,bl.estimatedType)
+            #if bl[i1].estimatedType == RightBarLine or bl[i2].estimatedType != LeftBarLine:
+            #    i1 += 1
+            #elif bl[i2].estimatedType == LeftBarLine:
+            #    i2 += 1
+            #elif bl[i1].estimatedType == RightBarLine:
+            #    i1 += 1
+            #    i2 += 1
+
+        print(len(bars))
+        for b in bars:
+            bb = b.getBBs()
+            self.ap.paintLineSegment(bb[0,:],bb[1,:],color=(200,10,50),alpha=0.9)
+        self.ap.writeImage('tst.png')
+        return bars
 
     @cachedProperty
     def hSums(self):
