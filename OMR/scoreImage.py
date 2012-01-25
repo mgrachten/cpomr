@@ -32,6 +32,19 @@ class ScoreImage(object):
         except IOError as e: 
             self.log.error('Problem loading image...')
             raise e
+        return self.preprocessImage(img)
+
+    def preprocessImage(self,img):
+        imin,imax = nu.min(img),nu.max(img)
+        istd = nu.std(img)
+        imed = nu.median(img)
+        if istd == 0:
+            self.log.warn('Blank image')
+        #if not 0 <= imin < 256 or not 0 <= imax < 256:
+        if imed > imin+(imax-imin)/2.:
+            self.log.warn('Image appears inverted, Inverting image')
+            img = 255-img
+        self.log.info('White-thresholding image (threshold: {0:.1f} %)'.format(100*self.bgThreshold/255.))
         img[img< self.bgThreshold] = 0
         return img
 
