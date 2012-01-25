@@ -14,10 +14,10 @@ def sortStaffLineAgents(agents,k=10):
     meanScorePerSystem = [nu.mean(scores[i:i+k]) for i in range(0,N,k)]
     dms = nu.diff(meanScorePerSystem)
     nsystems = nu.argmin(dms)+1
-    log = logging.getLogger(__name__)
-    log.info('Estimating {0} group(s), {1} stafflines'.format(nsystems,k*nsystems))
+    #log = logging.getLogger(__name__)
+    #log.info('Estimating {0} group(s), {1} stafflines'.format(nsystems,k*nsystems))
     na = agents[:k*nsystems]
-    log.info('Keeping {0} agents'.format(len(na)))
+    #log.info('Keeping {0} agents'.format(len(na)))
     return na
 
 def assessStaffLineAgents(iagents,M,nPerStaff):

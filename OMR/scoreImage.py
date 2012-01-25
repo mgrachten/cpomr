@@ -26,7 +26,7 @@ class ScoreImage(object):
 
     @getter
     def getImg(self):
-        self.log.info('Loading image {0}'.format(self.fn))
+        self.log.info('Loading image: {0}'.format(self.fn))
         try:
             img = 255-getPattern(self.fn,False,False)
         except IOError as e: 
@@ -58,7 +58,6 @@ class ScoreImage(object):
         # larger than thresholdPropOfMax times the largest ASD over all staffs
         #thresholdPropOfMax = .75
         maxStaffLineDistDev = .05
-        self.log.info('Original nr of staffs: {0}'.format(len(staffs)))
         slDists = nu.array([staff.getStaffLineDistance() for staff in staffs])
         #log.info('avg staff line distance per staff:')
         # take the largest avg staff distance as the standard,
@@ -67,13 +66,16 @@ class ScoreImage(object):
         staffs = [staff for staff in staffs if
                   nu.sum([nu.abs(x-medDist) for x in 
                           staff.getStaffLineDistances()])/(medDist*5) < maxStaffLineDistDev]
+        origNrStaffs = len(staffs)
         #staffs = list(nu.array(staffs)[slDists >= thresholdPropOfMax*maxDist])
         #slDistStds = nu.array([staff.getStaffLineDistanceStd() for staff in staffs])
         #print('sd staff line distance per staff:')
         #print(slDistStds)
         #medStd = nu.median(slDistStds)
         #staffs = list(nu.array(staffs)[slDistStds <= .04*maxDist])
-        self.log.info('New nr of staffs: {0}'.format(len(staffs)))
+
+        self.log.info('Selecting {0} staffs from candidate list, discarding {1} staff(s)'.format(len(staffs),
+                                                                                         origNrStaffs-len(staffs)))
         return staffs
 
     @getter
