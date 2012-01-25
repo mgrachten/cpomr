@@ -22,7 +22,10 @@ class ScoreImage(object):
         self.nAnglebins = 600
         self.colGroups = 11
         self.bgThreshold = 20
-        self.ap = AgentPainter(self.getImg())
+
+    @cachedProperty
+    def ap(self):
+        return AgentPainter(self.getImg())
 
     @getter
     def getImg(self):
