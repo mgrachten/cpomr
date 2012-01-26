@@ -83,7 +83,6 @@ class VerticalSegment(object):
         stop = False
         finalStage = False
         nFinalRuns = 20
-        #draw = True
         draw = self.draw
         for i,c in enumerate(cols):
             if nFinalRuns == 0:
