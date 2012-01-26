@@ -189,7 +189,6 @@ class System(object):
     def barLines(self):
         # get barcandidates (excluding those without a valid neighbourhood)
         barCandidates = [bc for bc in self.barCandidates if bc.estimatedType != None]
-        
         lw = nu.mean([bc.agent.getLineWidth() for bc in barCandidates])
         lwFactor = 3
         bc = []
@@ -213,20 +212,7 @@ class System(object):
                     bc.append(b)
         barCandidates = bc
         self.log.info('Found {0} bar lines in system {1}'.format(len(barCandidates),self.n))
-        if True:
-            return barCandidates
-
-        for i,b in enumerate(barCandidates):
-            ap1 = AgentPainter(b.neighbourhood)
-            for p in b.getVerticalStaffLinePositions:
-                ap1.paintHLine(nu.floor(p),step=2,color=(255,0,0))
-            for p in b.getVerticalStaffLinePositions+self.getStaffLineWidth():
-                ap1.paintHLine(nu.ceil(p),step=2,color=(255,0,0))
-            for bhc in b.barHCoordsLocal:
-                ap1.paintVLine(nu.round(bhc),step=2,color=(255,0,0))
-            fn = os.path.splitext(os.path.basename(self.scrImage.fn))[0]
-            name = '{2}-bar-{0:03d}-{1:03d}.txt'.format(self.n,i,fn)
-            ap1.writeImage('{2}-bar-{0:03d}-{1:03d}.png'.format(self.n,i,fn))
+        return barCandidates
 
     @cachedProperty
     def barCandidates(self):
