@@ -11,5 +11,5 @@ if __name__ == '__main__':
     si = ScoreImage(fn)
     #si.drawImage()
     for b in si.bars:
-        print(b.getBBs())
+        pass#print(b.getBBs())
 

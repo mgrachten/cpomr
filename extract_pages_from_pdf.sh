@@ -1,6 +1,6 @@
 #!/bin/bash
 
-maxDim=1500
+maxDim=2500
 for pdf in *.pdf;
 do
     dir="${pdf/.pdf/}"

@@ -86,7 +86,7 @@ class ScoreImage(object):
         staffs = []
 
         for i,vs in enumerate(self.getStaffSegments()):
-            self.ap.paintHLine(vs.bottom)
+            #self.ap.paintHLine(vs.bottom)
             x = nu.arange(vs.top,vs.bottom)
             #self.ap.paintRav(nu.column_stack((x,i*2*nu.ones(len(x)))),color=(10,10,10))
             self.log.info('Processing staff segment {0}'.format(i))
@@ -152,45 +152,6 @@ class ScoreImage(object):
         ap1.writeImage(self.fn.replace('.png','-corr.png'))
 
     @cachedProperty
-    def bars(self):
-        """
-        Return bars
-        """
-        bars = []
-        bl = [bl for system in self.systems for bl in system.barLines]
-        N = len(bl)
-        i1 = 0
-        i2 = 1
-        print(len(bl))
-        while i2 < N:
-            print(i1,i2)
-            if (bl[i1].estimatedType != RightBarLine and
-                bl[i2].estimatedType != LeftBarLine):
-                print('bar',i1,i2)
-                bars.append(Bar(bl[i1],bl[i2]))
-                i1 = i2
-                i2 += 1
-            else:
-                if bl[i1].estimatedType == RightBarLine:
-                    i1 += 1
-                i2 += 1
-
-            #if bl[i1].estimatedType == RightBarLine or bl[i2].estimatedType != LeftBarLine:
-            #    i1 += 1
-            #elif bl[i2].estimatedType == LeftBarLine:
-            #    i2 += 1
-            #elif bl[i1].estimatedType == RightBarLine:
-            #    i1 += 1
-            #    i2 += 1
-
-        print(len(bars))
-        for b in bars:
-            bb = b.getBBs()
-            self.ap.paintLineSegment(bb[0,:],bb[1,:],color=(200,10,50),alpha=0.9)
-        self.ap.writeImage('tst.png')
-        return bars
-
-    @cachedProperty
     def hSums(self):
         return nu.sum(self.getImg(),1)
 
@@ -229,6 +190,91 @@ class ScoreImage(object):
         amax = angles[nu.argmax(globalAngleHist)]
         return distributions.norm(amax,.5/180.0).pdf(angles)
 
+    @cachedProperty
+    def bars(self):
+        """
+        Return bars
+        """
+        bars = []
+        bl = [(i,j) for i in range(len(self.systems)) for j in range(len(self.systems[i].barLines))]
+        i1,i2 = 0,1
+        while i2 < len(bl):
+            k1,l1 = bl[i1]
+            k2,l2 = bl[i2]
+            bl1 = self.systems[k1].barLines[l1]
+            bl2 = self.systems[k2].barLines[l2]
+            if (bl1.estimatedType != RightBarLine and
+                bl2.estimatedType != LeftBarLine):
+                bars.append(Bar(self,(k1,l1),(k2,l2)))
+                i1 = i2
+            else:
+                if bl1.estimatedType == RightBarLine:
+                    i1 += 1
+            i2 += 1
+
+        w = int(5*nu.mean([s.getStaffLineDistance() for s in self.systems]))
+        above = nu.array([w,0])
+        below = nu.array([w,0])
+        alpha = .9
+        color = (150,0,0)
+        for k,b in enumerate(bars):
+            bbs = b.getBBs()
+            # vertical lines:
+            # first barline
+            self.ap.paintLineSegment(bbs[0][0,:]-above,bbs[0][1,:]+below,color=color,alpha=alpha)
+            # number
+            self.ap.drawText('{0}'.format(k),bbs[0][0,:]-above+(nu.array([w,w])/4.).astype(nu.int),
+                             size = max(10,int(.3*w)),color=color,alpha=alpha)
+            # last barline
+            self.ap.paintLineSegment(bbs[-1][0,:]-above,bbs[-1][1,:]+below,color=color,alpha=alpha)
+            
+            if b.sys1 == b.sys2:
+                # lower horizontal
+                coord1 = bbs[0][0,:]
+                coord2 = bbs[-1][0,:]
+                self.ap.paintLineSegment(coord1-above,coord2-above,color=color,alpha=alpha)
+                # upper horizontal
+                coord1 = bbs[0][1,:]
+                coord2 = bbs[-1][1,:]
+                self.ap.paintLineSegment(coord1+below,coord2+below,color=color,alpha=alpha)
+            
+            #for bb in bbs:
+            for i in range(len(bbs)-1):
+                l1 = bbs[i]
+                l2 = bbs[i+1]
+                if i == len(bbs)-2: #l1.sys1 == l2.sys2:
+                    endline = l2
+                else:
+                    hoffset = w
+                    endline = l1+nu.array([0,hoffset])
+                # lower horizontal
+                coord1 = l1[0,:]
+                coord2 = endline[0,:]
+                self.ap.paintLineSegment(coord1-above,coord2-above,color=color,alpha=alpha)
+                # upper horizontal
+                coord1 = l1[1,:]
+                coord2 = endline[1,:]
+                self.ap.paintLineSegment(coord1+below,coord2+below,color=color,alpha=alpha)
+                
+        alpha = .1
+        color = (10,150,10)
+
+        for system in self.systems:
+            #ap = AgentPainter(system.correctedImgSegment)
+            M,N = system.correctedImgSegment.shape
+            shrink = 3
+            bb = nu.array([[1,1],
+                           [M-shrink,N-shrink],
+                           [1,N-shrink],
+                           [M-shrink,1]])
+            bbr = system.rotator.derotate(bb)
+            self.ap.paintLineSegment(bbr[0,:],bbr[3,:],color=color,alpha=alpha)
+            self.ap.paintLineSegment(bbr[1,:],bbr[2,:],color=color,alpha=alpha)
+            self.ap.paintLineSegment(bbr[0,:],bbr[2,:],color=color,alpha=alpha)
+            self.ap.paintLineSegment(bbr[1,:],bbr[3,:],color=color,alpha=alpha)
+            #ap.writeImage('system-{0:02d}.png'.format(system.n))
+        self.ap.writeImage('tst.png')
+        return bars
 
 if __name__ == '__main__':
     pass

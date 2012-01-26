@@ -10,13 +10,28 @@ from agentPainter import AgentPainter
 import scipy.stats
 
 class Bar(object):
-    def __init__(self,barline1,barline2):
-        self.barline1 = barline1
-        self.barline2 = barline2
+    def __init__(self,scoreImg,kl1,kl2):
+        self.scoreImg = scoreImg
+        self.sys1,self.line1 = kl1
+        self.sys2,self.line2 = kl2
     def getBBs(self):
-        #print(nu.column_stack((self.barline1.barVCoords[nu.array((0,-1))],
-        #                       nu.zeros(2)+self.barline1.barHCoords[-1])))
-        return self.barline1.system.rotator.derotate(self.barline1.barVCoords[nu.array((0,-1))])
+        k = self.sys1
+        l = self.line1
+        bbs = [self.scoreImg.systems[k].rotator.derotate(self.scoreImg.systems[k].barLines[l].barVCoords[nu.array((0,-1))])]
+        l += 1
+        while k < self.sys2:
+            n = len(self.scoreImg.systems[k].barLines)
+            while l < n:
+                bbs.append(self.scoreImg.systems[k].rotator.derotate(self.scoreImg.systems[k].barLines[l].barVCoords[nu.array((0,-1))]))
+                l += 1
+            k += 1
+            l = 0
+        # k == self.sys2, l == 0
+        while l < self.line2:
+            bbs.append(self.scoreImg.systems[k].rotator.derotate(self.scoreImg.systems[k].barLines[l].barVCoords[nu.array((0,-1))]))
+            l += 1
+        bbs.append(self.scoreImg.systems[k].rotator.derotate(self.scoreImg.systems[k].barLines[l].barVCoords[nu.array((0,-1))]))
+        return bbs
 
 
 class LeftBarLine(object): pass
@@ -47,17 +62,16 @@ class BarCandidate(object):
             return False
         hi0,lo0,hi1,lo1 = self.barVCoordsLocal.astype(nu.int)
         hcoords = self.barHCoordsLocal.astype(nu.int)
-        #print('hcl',hcoords)
-        #print('vcl',self.barVCoordsLocal.astype(nu.int))
         h = lo1-hi0
         img = self.neighbourhood.astype(nu.float)
+        # compute the std/mean blackness of the hypothesized bar
         nstd = [nu.std(img[hi0:lo1,hcoords[0]+1:hcoords[1]])/nu.mean(img[hi0:lo1,hcoords[0]+1:hcoords[1]])]
         if len(hcoords) == 4:
             nstd.append(nu.std(img[hi0:lo1,hcoords[2]+1:hcoords[3]])/nu.mean(img[hi0:lo1,hcoords[2]+1:hcoords[3]]))
         nstd = nu.array(nstd)
+        # if the std/mean blackness is too high, decide this is not a bar
         self.invalid = nu.max(nstd) > .5
         return not self.invalid
-
 
     @cachedProperty
     def diffSums(self):
@@ -78,7 +92,9 @@ class BarCandidate(object):
         assert self.rotator != None
         # TODO: check if using zero for other coordinate is the right thing to do
         # alternative: use HCoords
-        return self.rotator.derotate(nu.column_stack((self.barVCoordsLocal,nu.zeros(self.barVCoordsLocal.shape[0]))))
+        offset = self.neighbourhood.shape[0]/2.0
+        return self.rotator.derotate(nu.column_stack((self.barVCoordsLocal-offset,
+                                                      nu.zeros(self.barVCoordsLocal.shape[0]))))
 
     @cachedProperty
     def barHCoordsLocal(self):
@@ -176,7 +192,6 @@ class BarCandidate(object):
 
     @cachedProperty
     def neighbourhood(self):
-        #print(self.estimatedType)
         return self.approximateNeighbourhood
 
     @cachedProperty
@@ -218,7 +233,6 @@ class BarCandidate(object):
         middle = (nu.array((system0Top,yTop))+nu.array((system1Bot,yBot)))/2.0
         if midCorrection != None:
             middle += midCorrection
-        #r = Rotator(self.agent.angle-.5,middle,nu.array((0,0.)))
         self.rotator = Rotator(self.agent.angle-.5,middle,nu.array((0,0.)))
         hhalf = int(sysHeight*self.heightFactor/2.)
         whalf = int(2*self.system.getStaffLineDistance())
