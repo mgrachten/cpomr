@@ -9,7 +9,8 @@ logging.basicConfig(format='%(levelname)s: [%(name)s] %(message)s',level=logging
 if __name__ == '__main__':
     fn = sys.argv[1]
     si = ScoreImage(fn)
-    #si.drawImage()
-    for b in si.bars:
-        pass#print(b.getBBs())
+    si.drawImage()
+    si.drawCorrectedImage()
+    #for b in si.bars:
+    #    pass#print(b.getBBs())
 
