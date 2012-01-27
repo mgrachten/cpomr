@@ -217,14 +217,22 @@ class ScoreImage(object):
         below = nu.array([w,0])
         alpha = .9
         color = (150,0,0)
+        goodColor = (0,150,0)
+        badColor = (250,0,0)
         for k,b in enumerate(bars):
             bbs = b.getBBs()
             # vertical lines:
             # first barline
+            color = goodColor if b.getBarline1().confidence > 0 else badColor
             self.ap.paintLineSegment(bbs[0][0,:]-above,bbs[0][1,:]+below,color=color,alpha=alpha)
             # number
             self.ap.drawText('{0}'.format(k),bbs[0][0,:]-above+(nu.array([w,w])/4.).astype(nu.int),
                              size = max(10,int(.3*w)),color=color,alpha=alpha)
+
+            self.ap.drawText('{0:.1f}'.format(b.getBarline1().confidence),bbs[0][0,:]-above+(nu.array([2*w,0])/4.).astype(nu.int),
+                             size = max(10,int(.3*w)),color=color,alpha=alpha)
+
+            color = goodColor if b.getBarline2().confidence > 0 else badColor
             # last barline
             self.ap.paintLineSegment(bbs[-1][0,:]-above,bbs[-1][1,:]+below,color=color,alpha=alpha)
             
@@ -273,7 +281,7 @@ class ScoreImage(object):
             self.ap.paintLineSegment(bbr[0,:],bbr[2,:],color=color,alpha=alpha)
             self.ap.paintLineSegment(bbr[1,:],bbr[3,:],color=color,alpha=alpha)
             #ap.writeImage('system-{0:02d}.png'.format(system.n))
-        self.ap.writeImage('tst.png')
+        self.ap.writeImage(self.fn)
         return bars
 
 if __name__ == '__main__':
