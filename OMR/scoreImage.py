@@ -112,8 +112,12 @@ class ScoreImage(object):
     @cachedProperty
     def systems(self):
         staffs = self.getStaffs()
-        assert len(staffs)%2 == 0
-        return [System(self,(staffs[i],staffs[i+1]),i/2) for i in range(0,len(staffs),2)]
+        if len(staffs)%2 != 0:
+            self.log.critical('Cannot deal with unequal number of staffs under the current assumption of double staff systems')
+            self.log.warn('Discarding any detected staffs')
+            return []
+        else:
+            return [System(self,(staffs[i],staffs[i+1]),i/2) for i in range(0,len(staffs),2)]
 
     def drawImage(self):
         # draw segment boundaries
