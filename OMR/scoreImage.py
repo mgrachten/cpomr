@@ -2,7 +2,7 @@
 
 import sys,os, pickle, logging
 import numpy as nu
-from utilities import cachedProperty, getter
+from utilities import cachedProperty
 from imageUtil import writeImageData, getPattern, findValleys, smooth, normalize
 from scipy.stats import distributions
 
@@ -13,9 +13,11 @@ from staff import Staff
 from bar import RightBarLine,LeftBarLine,Bar
 from itertools import chain
 
+def log():
+    return logging.getLogger(__name__)
+
 class ScoreImage(object):
     def __init__(self,fn):
-        self.log = logging.getLogger(__name__)
         self.fn = fn
         self.typicalNrOfSystemPerPage = 6
         self.maxAngle = 1.5/180.
@@ -25,15 +27,15 @@ class ScoreImage(object):
 
     @cachedProperty
     def ap(self):
-        return AgentPainter(self.getImg())
+        return AgentPainter(self.img)
 
-    @getter
-    def getImg(self):
-        self.log.info('Loading image: {0}'.format(self.fn))
+    @cachedProperty
+    def img(self):
+        log().info('Loading image: {0}'.format(self.fn))
         try:
             img = 255-getPattern(self.fn,False,False)
         except IOError as e: 
-            self.log.error('Problem loading image...')
+            log().error('Problem loading image...')
             raise e
         return self.preprocessImage(img)
 
@@ -44,44 +46,44 @@ class ScoreImage(object):
         minImageHeight = 1500
         minImageWidth = minImageHeight*.75
         if img.shape[1] < minImageWidth:
-            self.log.warn('Image resolution may be too low for accurate OMR, recognition may be slow')
-            self.log.warn('For good results, provide images with a width of at least {0} pixels'.format(int(minImageWidth)))
+            log().warn('Image resolution may be too low for accurate OMR, recognition may be slow')
+            log().warn('For good results, provide images with a width of at least {0} pixels'.format(int(minImageWidth)))
         if istd == 0:
-            self.log.warn('Blank image')
+            log().warn('Blank image')
 
         if imed > imin+(imax-imin)/2.:
-            self.log.warn('Image appears inverted, Inverting image')
+            log().warn('Image appears inverted, Inverting image')
             img = 255-img
-        self.log.info('White-thresholding image (threshold: {0:.1f} %)'.format(100*self.bgThreshold/255.))
+        log().info('White-thresholding image (threshold: {0:.1f} %)'.format(100*self.bgThreshold/255.))
         img[img< self.bgThreshold] = 0
         return img
 
     def getWidth(self):
-        return self.getImg().shape[1]
+        return self.img.shape[1]
     def getHeight(self):
-        return self.getImg().shape[0]
+        return self.img.shape[0]
 
     def selectStaffs(self,staffs):
         # staffs get selected if their avg staffline distance (ASD) is
         # larger than thresholdPropOfMax times the largest ASD over all staffs
 
         maxStaffLineDistDev = .05
-        slDists = nu.array([staff.getStaffLineDistance() for staff in staffs])
+        slDists = nu.array([staff.staffLineDistance for staff in staffs])
         #log.info('avg staff line distance per staff:')
         # take the largest avg staff distance as the standard,
         # this discards mini staffs
         medDist = nu.median(slDists)
         staffs = [staff for staff in staffs if
                   nu.sum([nu.abs(x-medDist) for x in 
-                          staff.getStaffLineDistances()])/(medDist*5) < maxStaffLineDistDev]
+                          staff.staffLineDistances])/(medDist*5) < maxStaffLineDistDev]
         origNrStaffs = len(staffs)
 
-        self.log.info('Selecting {0} staffs from candidate list, discarding {1} staff(s)'.format(len(staffs),
+        log().info('Selecting {0} staffs from candidate list, discarding {1} staff(s)'.format(len(staffs),
                                                                                          origNrStaffs-len(staffs)))
         return staffs
 
-    @getter
-    def getStaffs(self):
+    @cachedProperty
+    def staffs(self):
         draw = False
         staffs = []
 
@@ -89,15 +91,15 @@ class ScoreImage(object):
             #self.ap.paintHLine(vs.bottom)
             x = nu.arange(vs.top,vs.bottom)
             #self.ap.paintRav(nu.column_stack((x,i*2*nu.ones(len(x)))),color=(10,10,10))
-            self.log.info('Processing staff segment {0}'.format(i))
+            log().info('Processing staff segment {0}'.format(i))
             #vs.draw = i==2
             staffs.extend([Staff(self,s,vs.top,vs.bottom) for s in vs.staffLines])
 
         staffs = self.selectStaffs(staffs)
 
         if len(staffs)%2 != 0:
-            self.log.warn('Detected unequal number of staffs for file:\n\t{0}'.format(self.fn))
-            self.log.info('TODO: retry to find an equal number of staffs')
+            log().warn('Detected unequal number of staffs for file:\n\t{0}'.format(self.fn))
+            log().info('TODO: retry to find an equal number of staffs')
 
         if draw:
             for staff in staffs:
@@ -109,10 +111,10 @@ class ScoreImage(object):
 
     @cachedProperty
     def systems(self):
-        staffs = self.getStaffs()
+        staffs = self.staffs
         if len(staffs)%2 != 0:
-            self.log.critical('Cannot deal with unequal number of staffs under the current assumption of double staff systems')
-            self.log.warn('Discarding any detected staffs')
+            log().critical('Cannot deal with unequal number of staffs under the current assumption of double staff systems')
+            log().warn('Discarding any detected staffs')
             return []
         else:
             return [System(self,(staffs[i],staffs[i+1]),i/2) for i in range(0,len(staffs),2)]
@@ -121,7 +123,7 @@ class ScoreImage(object):
     def drawCorrectedImage(self):
         fn = os.path.splitext(os.path.basename(self.fn))[0]
         if len(self.systems) == 0:
-            self.log.critical('No systems found, cannot draw corrected image')
+            log().critical('No systems found, cannot draw corrected image')
             return False
         shapes = nu.array([system.correctedImgSegment.shape for system in self.systems])
         ssH = nu.sum(shapes[:,0])
@@ -138,10 +140,10 @@ class ScoreImage(object):
 
     @cachedProperty
     def hSums(self):
-        return nu.sum(self.getImg(),1)
+        return nu.sum(self.img,1)
 
-    @getter
-    def getVSegments(self):
+    @cachedProperty
+    def vSegments(self):
         K = int(self.getHeight()/(2*self.typicalNrOfSystemPerPage))+1
         sh = smooth(self.hSums,K)
         #nu.savetxt('/tmp/vh1.txt',nu.column_stack((self.hSums,sh)))
@@ -158,17 +160,17 @@ class ScoreImage(object):
         return vsegments
 
     def getNonStaffSegments(self):
-        return [vs for vs in self.getVSegments() if not vs.hasStaff()]
+        return [vs for vs in self.vSegments if not vs.hasStaff()]
 
     def getStaffSegments(self):
-        return [vs for vs in self.getVSegments() if vs.hasStaff()]
-        #d = partition(lambda x: x.hasStaff(),self.getVSegments())
+        return [vs for vs in self.vSegments if vs.hasStaff()]
+        #d = partition(lambda x: x.hasStaff(),self.vSegments)
         #return d[True], d[False]
 
-    @getter    
-    def getWeights(self):
+    @cachedProperty
+    def weights(self):
         globalAngleHist = smooth(nu.sum(nu.array([s.angleHistogram for s 
-                                                  in self.getVSegments()]),0),50)
+                                                  in self.vSegments]),0),50)
         angles = nu.linspace(-self.maxAngle,self.maxAngle,self.nAnglebins+1)[:-1] +\
             (float(self.maxAngle)/self.nAnglebins)
 
@@ -200,10 +202,10 @@ class ScoreImage(object):
 
     def drawImage(self):
         if len(self.systems) == 0:
-            self.log.warn('No systems found in image {0}'.format(self.fn))
+            log().warn('No systems found in image {0}'.format(self.fn))
             return False
 
-        w = int(5*nu.mean([s.getStaffLineDistance() for s in self.systems]))
+        w = int(5*nu.mean([s.staffLineDistance for s in self.systems]))
         above = nu.array([w,0])
         below = nu.array([w,0])
         alpha = .9

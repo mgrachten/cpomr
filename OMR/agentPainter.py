@@ -6,6 +6,9 @@ from PIL import ImageDraw,ImageFont,Image
 from imageUtil import getImageData, writeImageData, makeMask, normalize, jitterImageEdges,getPattern
 from utilities import makeColors
 
+def log():
+    return logging.getLogger(__name__)
+
 class AgentPainter(object):
     def __init__(self,img):
         self.img = nu.array((255-img,255-img,255-img))
@@ -14,7 +17,7 @@ class AgentPainter(object):
         self.colors = makeColors(self.maxAgents)
         self.paintSlots = nu.zeros(self.maxAgents,nu.bool)
         self.agents = {}
-        self.log = logging.getLogger(__name__)
+
     def writeImage(self,fn,absolute=False):
         #print(nu.min(img),nu.max(img))
         self.img = self.img.astype(nu.uint8)
@@ -22,7 +25,7 @@ class AgentPainter(object):
             fn = fn
         else:
             fn = os.path.join('/tmp',os.path.splitext(os.path.basename(fn))[0]+'.png')
-        self.log.info('Writing image to file: {0}'.format(fn))
+        log().info('Writing image to file: {0}'.format(fn))
         writeImageData(fn,self.img.shape[1:],self.img[0,:,:],self.img[1,:,:],self.img[2,:,:])
 
     def isRegistered(self,agent):
@@ -33,7 +36,7 @@ class AgentPainter(object):
             return True
         available = nu.where(self.paintSlots==0)[0]
         if len(available) < 1:
-            self.log.warn('No paint slots available')
+            log().warn('No paint slots available')
             return False
         #print('registring {0}'.format(agent.id))
         #print(agent.__hash__())
@@ -48,7 +51,7 @@ class AgentPainter(object):
             del self.agents[agent]
 
         else:
-            self.log.warn('Unknown agent\n')
+            log().warn('Unknown agent\n')
         
     def reset(self):
         self.img = self.imgOrig.copy()

@@ -2,7 +2,7 @@
 
 import sys,logging
 import numpy as nu
-from utilities import getter
+from utilities import cachedProperty
 
 def sortStaffLineAgents(agents,k=10):
     agents.sort(key=lambda x: -x.score)
@@ -45,20 +45,20 @@ class Staff(object):
         self.staffLineAgents.sort(key=lambda x: x.getMiddle(self.scrImage.getWidth()))
     def __str__(self):
         return 'Staff {0}; nAgents: {1}; avggap: {2}: top: {3}; bot: {4}'\
-            .format(self.__hash__(),len(self.staffLineAgents),self.getStaffLineDistance(),
+            .format(self.__hash__(),len(self.staffLineAgents),self.staffLineDistance,
                     self.top,self.bottom)
     def draw(self):
         for agent in self.staffLineAgents:
             self.scrImage.ap.register(agent)
             self.scrImage.ap.drawAgentGood(agent,-self.scrImage.getWidth(),self.scrImage.getWidth())
 
-    @property
+    @cachedProperty
     def angle(self):
         #print('staff angles',[(a.angle+.5)%1-.5 for a in self.staffLineAgents])
         return nu.mean([(a.angle+.5)%1-.5 for a in self.staffLineAgents])
 
-    @getter
-    def getTopBottomRight(self):
+    @cachedProperty
+    def topBottomRight(self):
         rTop = nu.array((0,self.scrImage.getWidth()-1))
         rBot = nu.array((self.scrImage.getHeight()-1,self.scrImage.getWidth()-1))
         x0offset = self.staffLineAgents[0].offset
@@ -66,8 +66,8 @@ class Staff(object):
         return (self.staffLineAgents[0].getIntersection(rTop,rBot)[0]+x0offset,
                 self.staffLineAgents[-1].getIntersection(rTop,rBot)[0]+x1offset)
         
-    @getter
-    def getTopBottomLeft(self):
+    @cachedProperty
+    def topBottomLeft(self):
         lTop = nu.array((0,0))
         lBot = nu.array((self.scrImage.getHeight()-1,0))
         x0offset = self.staffLineAgents[0].offset
@@ -75,26 +75,26 @@ class Staff(object):
         return (self.staffLineAgents[0].getIntersection(lTop,lBot)[0]+x0offset,
                 self.staffLineAgents[-1].getIntersection(lTop,lBot)[0]+x1offset)
         
-    @getter
-    def getTopBottom(self):
-        """Return the highest and the lowest vertical coordinate that the staff lines span
-        NOTE: the difference between these two values larger than the width of the staff,
-        in case the staff is rotated.
-        """
-        xx = nu.sort(list(self.getTopBottomLeft)+list(self.getTopBottomRight))
-        return xx[0],xx[-1]
+    # @cachedProperty
+    # def getTopBottom(self):
+    #     """Return the highest and the lowest vertical coordinate that the staff lines span
+    #     NOTE: the difference between these two values larger than the width of the staff,
+    #     in case the staff is rotated.
+    #     """
+    #     xx = nu.sort(list(self.topBottomLeft)+list(self.topBottomRight))
+    #     return xx[0],xx[-1]
 
-    @getter 
-    def getStaffLineDistances(self):
+    @cachedProperty
+    def staffLineDistances(self):
         return nu.diff([a.getMiddle(self.scrImage.getWidth()) for a in self.staffLineAgents])
 
-    @getter
-    def getStaffLineDistance(self):
-        return nu.mean(self.getStaffLineDistances())
+    @cachedProperty
+    def staffLineDistance(self):
+        return nu.mean(self.staffLineDistances)
 
-    @getter
-    def getStaffLineDistanceStd(self):
-        return nu.std(self.getStaffLineDistances())
+    @cachedProperty
+    def staffLineDistanceStd(self):
+        return nu.std(self.sStaffLineDistances)
 
 if __name__ == '__main__':
     pass

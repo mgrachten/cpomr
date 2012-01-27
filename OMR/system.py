@@ -3,13 +3,15 @@
 import sys,os,logging
 import numpy as nu
 from utils import Rotator
-from utilities import cachedProperty, getter
+from utilities import cachedProperty
 from agent import makeAgentClass, assignToAgents, mergeAgents
 from agentPainter import AgentPainter
 from utils import selectColumns
 from imageUtil import getAntiAliasedImg, smooth
 from bar import BarCandidate
-#from barEval import isBar
+
+def log():
+    return logging.getLogger(__name__)
 
 def sortBarAgents(agents):
     agents.sort(key=lambda x: -x.score)
@@ -23,7 +25,6 @@ def sortBarAgents(agents):
 
 class System(object):
     def __init__(self,scoreImage,staffs,n=0):
-        self.log = logging.getLogger(__name__)
         self.scrImage = scoreImage
         self.staffs = staffs
         self.barPoints = []
@@ -40,24 +41,24 @@ class System(object):
         self.barPoints.append(xy)
 
     def getLowerLeft(self):
-        return self.getSystemPoints()[2]
+        return self.systemPoints[2]
 
     def getUpperLeft(self):
-        return self.getSystemPoints()[0]
+        return self.systemPoints[0]
 
     def getLowerMid(self):
-        return self.getSystemPoints()[4]
+        return self.systemPoints[4]
 
     def getLowerMidLocal(self):
         return nu.array((self.getSystemHeight()-1,int((self.getSystemWidth()-1)/2)))
 
-    @getter
-    def getSystemPoints(self):
+    @cachedProperty
+    def systemPoints(self):
         # returns topleft, topright, botleft, botright, and lower hmid
         # of tilted rectangle, such that all above coordinates fall inside the img
         hMid = int(self.scrImage.getWidth()/2.)
         # sometimes the staff is close to the border of the segment
-        extra = nu.array((int(nu.ceil(self.getStaffLineDistance())),0))
+        extra = nu.array((int(nu.ceil(self.staffLineDistance)),0))
 
         top = self.staffs[0].top-extra[0]
         bot = self.staffs[1].bottom+extra[0]
@@ -102,14 +103,14 @@ class System(object):
     def hSums(self):
         return nu.sum(self.correctedImgSegment,1)
 
-    @getter
-    def getStaffLineWidth(self):
+    @cachedProperty
+    def staffLineWidth(self):
         return nu.mean([a.getLineWidth() for a in self.staffs[0].staffLineAgents]+
                        [a.getLineWidth() for a in self.staffs[1].staffLineAgents])
 
-    @getter
-    def getStaffLineDistance(self):
-        return (self.staffs[0].getStaffLineDistance()+self.staffs[1].getStaffLineDistance())/2.0
+    @cachedProperty
+    def staffLineDistance(self):
+        return (self.staffs[0].staffLineDistance+self.staffs[1].staffLineDistance)/2.0
 
     def getImgHParts(self,hbins,overlap):
         M,N = self.correctedImgSegment.shape
@@ -122,8 +123,8 @@ class System(object):
         return [self.correctedImgSegment[:,lefts[i]:rights[i]]
                 for i in range(len(lefts))],lefts,rights
             
-    @getter
-    def getBarLineAgents(self):
+    @cachedProperty
+    def barLineAgents(self):
         """
         strategy:
         * run barline detection for different (slightly overlapping) segements
@@ -147,7 +148,7 @@ class System(object):
     def _getBarLineAgentsPart(self,img,vbins,yoffset,rightBorder,j):
         BarAgent = makeAgentClass(targetAngle=.5,
                                   maxAngleDev=4/180.,
-                                  maxError=self.getStaffLineWidth()/7.0,
+                                  maxError=self.staffLineWidth/7.0,
                                   minScore=-2,
                                   yoffset=yoffset)
         agents = []
@@ -187,7 +188,7 @@ class System(object):
 
     @cachedProperty
     def barLines(self):
-        self.log.info('Searching for bar lines in system {0}'.format(self.n))
+        log().info('Searching for bar lines in system {0}'.format(self.n))
         # get barcandidates (excluding those without a valid neighbourhood)
         barCandidates = [bc for bc in self.barCandidates if bc.estimatedType != None]
         lw = nu.mean([bc.agent.getLineWidth() for bc in barCandidates])
@@ -212,12 +213,12 @@ class System(object):
                 else:
                     bc.append(b)
         barCandidates = bc
-        self.log.info('Found {0} bar lines in system {1}'.format(len(barCandidates),self.n))
+        log().info('Found {0} bar lines in system {1}'.format(len(barCandidates),self.n))
         return barCandidates
 
     @cachedProperty
     def barCandidates(self):
-        bars = [BarCandidate(self,x) for x in self.getBarLineAgents()]
+        bars = [BarCandidate(self,x) for x in self.barLineAgents]
         return bars
 
     def getSystemWidth(self):
@@ -241,7 +242,7 @@ class System(object):
         xx,yy = nu.mgrid[0:self.getSystemHeight(),-halfSystemWidth:halfSystemWidth]
         yy += self.getLowerMidLocal()[1]
         xxr,yyr = self.rotator.derotate(xx,yy)
-        return getAntiAliasedImg(self.scrImage.getImg(),xxr,yyr)
+        return getAntiAliasedImg(self.scrImage.img,xxr,yyr)
 
 if __name__ == '__main__':
     pass

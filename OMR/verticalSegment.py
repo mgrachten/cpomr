@@ -3,7 +3,7 @@
 import sys,os
 import logging
 import numpy as nu
-from utilities import cachedProperty, getter
+from utilities import cachedProperty
 from agent import assignToAgents, mergeAgents, makeAgentClass
 from imageUtil import normalize
 from utils import selectColumns
@@ -116,7 +116,7 @@ class VerticalSegment(object):
                 for k in range(len(agents)/self.nPerStaff)]
 
     def getImgSegment(self):
-        return self.scrImage.getImg()[self.top:self.bottom,:]
+        return self.scrImage.img[self.top:self.bottom,:]
 
     @property
     def hSums(self):
@@ -128,15 +128,15 @@ class VerticalSegment(object):
 
     @cachedProperty
     def angleHistogram(self):
-        #self.vSums = nu.sum(self.scrImage.getImg()[self.top:self.bottom,:],0)
+        #self.vSums = nu.sum(self.scrImage.img[self.top:self.bottom,:],0)
         hparts = 3
         cols = selectColumns(self.vSums,hparts)[0]
         angles = []
         nColsToProcess = int(2*len(cols)/10)
         for j in range(nColsToProcess):
             dx = cols[j]-cols[j+1]
-            dps,dy = getOffset(self.scrImage.getImg()[self.top:self.bottom,cols[j]],
-                               self.scrImage.getImg()[self.top:self.bottom,cols[j+1]],
+            dps,dy = getOffset(self.scrImage.img[self.top:self.bottom,cols[j]],
+                               self.scrImage.img[self.top:self.bottom,cols[j+1]],
                                nu.abs(dx),self.maxAngle)
             if nu.min(dps) < 0.5: # min is only > 0 when dps has zero range
                 angles.append((nu.arctan2(dy,dx)/nu.pi+.5)%1-.5)
@@ -149,7 +149,7 @@ class VerticalSegment(object):
         """estimate the angle by taking the argmax of the angle histogram,
         weighted by the global angle histogram of the page.
         """
-        i = nu.argmax(self.angleHistogram*self.scrImage.getWeights())
+        i = nu.argmax(self.angleHistogram*self.scrImage.weights)
         #nu.savetxt('/tmp/h{0}'.format(i),self.angleHistogram*weights)
         return (float(self.maxAngle)/self.nAngleBins)-\
             self.maxAngle+i*2.0*self.maxAngle/self.nAngleBins

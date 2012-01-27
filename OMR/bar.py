@@ -65,8 +65,8 @@ class BarCandidate(object):
     @cachedProperty
     def features(self):
         img = self.neighbourhood.astype(nu.float)
-        staffLineWidth = self.system.getStaffLineWidth() # avg stafflinewidth
-        staffLineDist = self.system.getStaffLineDistance() # avg staffline distance
+        staffLineWidth = self.system.staffLineWidth # avg stafflinewidth
+        staffLineDist = self.system.staffLineDistance # avg staffline distance
         # TODO: apply naming convention for properties
         staffTops = nu.array(self.getVerticalStaffLinePositions).astype(nu.float)
         hcoords = nu.array(self.barHCoordsLocal)
@@ -161,8 +161,8 @@ class BarCandidate(object):
     def barVCoordsLocal(self):
         """Assumes vCorrection has been applied to self.neighbourhood
         """
-        staff0Top,staff0Bot = self.system.staffs[0].getTopBottomLeft()
-        staff1Top,staff1Bot = self.system.staffs[1].getTopBottomLeft()
+        staff0Top,staff0Bot = self.system.staffs[0].topBottomLeft
+        staff1Top,staff1Bot = self.system.staffs[1].topBottomLeft
         w = staff1Bot-staff0Top
         offset = (self.neighbourhood.shape[0]-w)/2.0
         return nu.array([staff0Top,staff0Bot,staff1Top,staff1Bot])-staff0Top+offset
@@ -262,7 +262,7 @@ class BarCandidate(object):
         """
         assert self.approximateNeighbourhood != None
         W = self.approximateNeighbourhood.shape[1]
-        w = .3*self.system.getStaffLineDistance()
+        w = .3*self.system.staffLineDistance
         N = int(nu.floor(W/2.0))
         lr = int(nu.round(max(0,N-.5*self.agent.getLineWidth())))
         ll = int(nu.round(max(0,lr-w)))
@@ -290,8 +290,8 @@ class BarCandidate(object):
             img = img[:,l:]
         elif self.estimatedType == RightBarLine:
             img = img[:,:r]
-        staff0Top,staff0Bot = self.system.staffs[0].getTopBottomLeft()
-        staff1Top,staff1Bot = self.system.staffs[1].getTopBottomLeft()
+        staff0Top,staff0Bot = self.system.staffs[0].topBottomLeft
+        staff1Top,staff1Bot = self.system.staffs[1].topBottomLeft
         extra = 5
         L = int(nu.ceil(staff1Bot-staff0Top)+2*extra)
         comb = nu.zeros(L)
@@ -315,7 +315,7 @@ class BarCandidate(object):
             middle += midCorrection
         self.rotator = Rotator(self.agent.angle-.5,middle,nu.array((0,0.)))
         hhalf = int(sysHeight*self.heightFactor/2.)
-        whalf = int(1.8*self.system.getStaffLineDistance())
+        whalf = int(1.8*self.system.staffLineDistance)
         xx,yy = nu.mgrid[-hhalf:hhalf,-whalf:whalf]
         xxr,yyr = self.rotator.derotate(xx,yy)
         # check if derotated neighbourhood is inside image
@@ -338,12 +338,12 @@ class BarCandidate(object):
         system1Bot = self.system.rotator.rotate(self.system.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
         sysHeight = (system1Bot-system0Top)
         hhalf = int(sysHeight*self.heightFactor/2.)
-        sld = self.system.staffs[0].getStaffLineDistance()
+        sld = self.system.staffs[0].staffLineDistance
         krng = range(-int(nu.ceil(.5*sld)),int(nu.ceil(.5*sld)))
         hsums = nu.sum(self.neighbourhood,1)
-        hslw = int(nu.floor(.5*self.system.getStaffLineWidth()))
+        hslw = int(nu.floor(.5*self.system.staffLineWidth))
 
-        inStaff = nu.arange(nu.round(self.system.getStaffLineWidth()))
+        inStaff = nu.arange(nu.round(self.system.staffLineWidth))
 
         staff0Tops = hhalf-.5*sysHeight-hslw+nu.arange(5)*sld
         staff1Tops = hhalf+.5*sysHeight-hslw-nu.arange(4,-1,-1)*sld
