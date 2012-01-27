@@ -187,6 +187,7 @@ class System(object):
 
     @cachedProperty
     def barLines(self):
+        self.log.info('Searching for bar lines in system {0}'.format(self.n))
         # get barcandidates (excluding those without a valid neighbourhood)
         barCandidates = [bc for bc in self.barCandidates if bc.estimatedType != None]
         lw = nu.mean([bc.agent.getLineWidth() for bc in barCandidates])
