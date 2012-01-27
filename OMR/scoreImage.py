@@ -119,41 +119,24 @@ class ScoreImage(object):
         else:
             return [System(self,(staffs[i],staffs[i+1]),i/2) for i in range(0,len(staffs),2)]
 
-    def drawImage(self):
-        # draw segment boundaries
-        for i,vs in enumerate(self.getVSegments()):
-            self.ap.paintHLine(vs.bottom,step=2)
 
-        for vs in self.getNonStaffSegments():
-            for j in range(vs.top,vs.bottom,4):
-                self.ap.paintHLine(j,alpha=0.9,step=4)
-                
-        sysSegs = []
-        k=0
-        barCandidates = []
-        acc = {}
+    def drawCorrectedImage(self):
         fn = os.path.splitext(os.path.basename(self.fn))[0]
-
-        for system in self.systems:
-            self.log.info('Drawing system {0}'.format(system.n))
-            system.barLines()
-        #with open('/tmp/{0}-acc.dat'.format(fn),'w') as f:
-        #    pickle.dump(acc,f)
-        if True:
-            return True
-
-        shapes = nu.array([ss.shape for ss in sysSegs])
+        if len(self.systems) == 0:
+            self.log.critical('No systems found, cannot draw corrected image')
+            return False
+        shapes = nu.array([system.correctedImgSegment.shape for system in self.systems])
         ssH = nu.sum(shapes[:,0])
         ssW = nu.max(shapes[:,1])
         ssImg = nu.zeros((ssH,ssW),nu.uint8)
         x0 = 0
-        for ss in sysSegs:
-            h,w = ss.shape
+        for system in self.systems:
+            h,w = system.correctedImgSegment.shape
             horzOffset = 0#int(nu.floor((ssW-w)/2.))
-            ssImg[x0:x0+h,horzOffset:horzOffset+w] = ss
+            ssImg[x0:x0+h,horzOffset:horzOffset+w] = system.correctedImgSegment
             x0 += h
         ap1 = AgentPainter(ssImg)
-        ap1.writeImage(self.fn.replace('.png','-corr.png'))
+        ap1.writeImage(fn+'-corrected.png')
 
     @cachedProperty
     def hSums(self):
@@ -215,6 +198,12 @@ class ScoreImage(object):
                 if bl1.estimatedType == RightBarLine:
                     i1 += 1
             i2 += 1
+        return bars
+
+    def drawImage(self):
+        if len(self.systems) == 0:
+            self.log.warn('No systems found in image {0}'.format(self.fn))
+            return False
 
         w = int(5*nu.mean([s.getStaffLineDistance() for s in self.systems]))
         above = nu.array([w,0])
@@ -223,7 +212,7 @@ class ScoreImage(object):
         color = (150,0,0)
         goodColor = (0,150,0)
         badColor = (250,0,0)
-        for k,b in enumerate(bars):
+        for k,b in enumerate(self.bars):
             bbs = b.getBBs()
             # vertical lines:
             # first barline
@@ -286,7 +275,6 @@ class ScoreImage(object):
             self.ap.paintLineSegment(bbr[1,:],bbr[3,:],color=color,alpha=alpha)
             #ap.writeImage('system-{0:02d}.png'.format(system.n))
         self.ap.writeImage(self.fn)
-        return bars
 
 if __name__ == '__main__':
     pass
