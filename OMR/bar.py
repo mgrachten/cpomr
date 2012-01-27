@@ -315,13 +315,18 @@ class BarCandidate(object):
             middle += midCorrection
         self.rotator = Rotator(self.agent.angle-.5,middle,nu.array((0,0.)))
         hhalf = int(sysHeight*self.heightFactor/2.)
-        whalf = int(2*self.system.getStaffLineDistance())
+        whalf = int(1.8*self.system.getStaffLineDistance())
         xx,yy = nu.mgrid[-hhalf:hhalf,-whalf:whalf]
         xxr,yyr = self.rotator.derotate(xx,yy)
         # check if derotated neighbourhood is inside image
         minx,maxx,miny,maxy = nu.min(xxr),nu.max(xxr),nu.min(yyr),nu.max(yyr)
         M,N = self.system.correctedImgSegment.shape
-        if minx < 0 or miny < 0 or maxx >= M or maxy >= N:
+        # leave a border of one pixel for antialiasing:
+        if minx < 1 or miny < 1 or maxx >= M-1 or maxy >= N-1:
+            log = logging.getLogger(__name__)
+            log.warn('Barline neighbourhood (center [{0},{1}]) does' \
+                         'not fit inside system neighbourhood' \
+                         ''.format(*self.system.rotator.derotate(middle.reshape((1,2)))[0,:].astype(nu.int)))
             return None
         cimg = getAntiAliasedImg(self.system.correctedImgSegment,xxr,yyr)
         return cimg
