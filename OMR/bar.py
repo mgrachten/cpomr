@@ -14,6 +14,13 @@ class Bar(object):
         self.scoreImg = scoreImg
         self.sys1,self.line1 = kl1
         self.sys2,self.line2 = kl2
+
+    def getBarline1(self):
+        return self.scoreImg.systems[self.sys1].barLines[self.line1]
+
+    def getBarline2(self):
+        return self.scoreImg.systems[self.sys2].barLines[self.line2]
+
     def getBBs(self):
         k = self.sys1
         l = self.line1
@@ -54,6 +61,79 @@ class BarCandidate(object):
         self.heightFactor = 1.2 # neighbourhood is heightFactor times systemHeight high
         self.rotator = None
         self.doubleGapFactor = .1 # treat as double bar if diffSums has an internal gap > (dgp * main gap)
+
+    @cachedProperty
+    def features(self):
+        img = self.neighbourhood.astype(nu.float)
+        staffLineWidth = self.system.getStaffLineWidth() # avg stafflinewidth
+        staffLineDist = self.system.getStaffLineDistance() # avg staffline distance
+        # TODO: apply naming convention for properties
+        staffTops = nu.array(self.getVerticalStaffLinePositions).astype(nu.float)
+        hcoords = nu.array(self.barHCoordsLocal)
+        t0,b0,t1,b1 = nu.round(staffTops[nu.array((0,4,5,9))])
+
+        barMarginV = nu.round(max(1,.5*staffLineWidth))
+        barMarginH = nu.round(max(1,.5*staffLineWidth))
+
+        if len(hcoords) == 2:
+            l,r = hcoords.astype(nu.int)
+            barMarginH = max(0,min(barMarginH,nu.floor(((r-l)-1)/2.0)))
+            coordsH = nu.arange(l+barMarginH,r-barMarginH).astype(nu.int)
+        else:
+            l0,r0,l1,r1 = hcoords.astype(nu.int)
+            barMarginH = max(0,min(barMarginH,min(nu.floor(((r0-l0)-1)/2.0),nu.floor(((r1-l1)-1)/2.0))))
+            coordsH = nu.append(nu.arange(l0+barMarginH,r0-barMarginH),
+                                    nu.arange(l1+barMarginH,r1-barMarginH)).astype(nu.int)
+
+        # the part of the barline in the upper and lower staffs (black)
+        coordsV = nu.append(nu.arange(t0+barMarginV,b0-barMarginV),
+                            nu.arange(t1+barMarginV,b1-barMarginV)).astype(nu.int)
+
+        crit1 = nu.mean(img[coordsV,:][:,coordsH])/255.
+
+        coordsV = nu.arange(b0+barMarginV,t1-barMarginV).astype(nu.int)
+        # the part of the barline between the staffs (black)
+        crit2 = nu.mean(img[coordsV,:][:,coordsH])/255.
+
+        # the part above and below the barline (white)
+        height = round(staffLineDist)
+        coordsV = nu.append(nu.arange(t0-height-barMarginV,t0-barMarginV),
+                            nu.arange(b1+barMarginV,b1+barMarginV+height)).astype(nu.int)
+        crit3 = nu.mean(img[coordsV,:][:,coordsH])/255.
+
+        # space between staffs (white)
+        width = round(staffLineWidth)
+        interStafflineMargin = 2
+        be = nu.column_stack((nu.floor(staffTops)[1:]-interStafflineMargin,
+                              interStafflineMargin+nu.ceil(staffTops+staffLineWidth)[:-1]))
+        be = nu.vstack((be[:4],be[5:]))
+        coordsV = nu.hstack([nu.arange(e,b) for b,e in be]).astype(nu.int)
+        b,e = int(hcoords[0]),int(hcoords[-1])
+        coordsH = nu.append(nu.arange(b-width,b)-interStafflineMargin,
+                            nu.arange(e,e+width)+interStafflineMargin).astype(nu.int)
+        N = len(coordsH)
+        mid = (N-1)/2.0
+        # weight pixels by their (inv) distance to the barline
+        weights = scipy.stats.norm.pdf(nu.arange(N),mid,N/8.0)
+        weights = weights/nu.sum(weights)
+        sums = nu.sum(img[coordsV,:],0)[coordsH]
+        sums = sums/(255*len(coordsV))
+        crit0 = nu.sum(weights*sums)
+        return nu.array([crit0,crit1,crit2,crit3])
+
+    @cachedProperty
+    def confidenceOrig(self):
+        c0intercept = -13.09
+        class0 = nu.array([-9.08,11.99,7.53,-1.99])
+        return nu.dot(self.features,class0)+c0intercept
+
+    @cachedProperty
+    def confidence(self):
+        c0intercept = -13.09
+        class0 = nu.array([-9.08,11.99,7.53,-1.99])
+        extraFeature = self.features[0]*(1-self.features[1])-.5
+        extraFeatureWeight = .1
+        return nu.dot(self.features,class0)+c0intercept+extraFeature*extraFeatureWeight
 
     def refine(self):
         # vertically adjust neighbourhood to center system
