@@ -101,9 +101,7 @@ class ScoreImage(object):
 
         if draw:
             for staff in staffs:
-                #self.log.info(staff)
                 staff.draw()
-            #self.ap.drawText('Maarten Grachten',pos=(230,200),size=30)
             self.ap.writeImage('tst.png')
             self.ap.reset()
 
