@@ -6,7 +6,7 @@ import numpy as nu
 from utilities import argpartition, partition
 #from copy import deepcopy
 
-def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False,maxWidth=nu.inf):
+def assignToAgents(v,agents,agentConfig,M,vert=None,horz=None,fixAgents=False,maxWidth=nu.inf):
     data = nu.nonzero(v)[0]
     if len(data) > 1:
         candidates = [tuple(x) if len(x)==1 else (x[0],x[-1]) for x in 
@@ -53,7 +53,7 @@ def assignToAgents(v,agents,AgentType,M,vert=None,horz=None,fixAgents=False,maxW
         for i in unadopted:
             if len(candidates[i]) == 1 or (len(candidates[i]) >1 and (candidates[i][-1][0]-candidates[i][0][0]) <= M/50.):
                 # only add an agent if we are on a small section
-                newagent = AgentType(nu.mean(nu.array(candidates[i]),0))
+                newagent = Agent(agentConfig,nu.mean(nu.array(candidates[i]),0))
                 newagents.append(newagent)
     
     #return [a for a in newagents if a.tick(fixAgents)]
@@ -108,24 +108,21 @@ def tls(X):
 def getError(x,a):
     return nu.sum(nu.dot(x,nu.array([nu.cos(a*nu.pi),-nu.sin(a*nu.pi)]).T)**2)**.5
 
-def makeAgentClass(targetAngle,maxAngleDev,maxError,minScore,offset=0,yoffset=0):
-    class CustomAgent(Agent): pass
-    CustomAgent.targetAngle = (targetAngle+1.0)%1
-    CustomAgent.maxError = maxError
-    CustomAgent.maxAngleDev = maxAngleDev
-    CustomAgent.minScore = minScore
-    CustomAgent.offset = offset
-    CustomAgent.yoffset = yoffset
-    CustomAgent.aoffset = nu.array((offset,yoffset))
-    return CustomAgent
+
+class AgentConfig(object):
+    def __init__(self,targetAngle=0,maxAngleDev=0,maxError=0,minScore=0,offset=0,yoffset=0):
+        self.targetAngle = (targetAngle+1.0)%1
+        self.maxError = maxError
+        self.maxAngleDev = maxAngleDev
+        self.minScore = minScore
+        self.offset = offset
+        self.yoffset = yoffset
+        self.aoffset = nu.array((offset,yoffset))
 
 class Agent(object):
-    targetAngle = None
-    maxError = None
-    maxAngleDev = None
-    minScore = None
 
-    def __init__(self,xy0,xy1=None):
+    def __init__(self,agentConfig,xy0,xy1=None):
+        self._setConfig(agentConfig)
         self.lineWidth = []
         if xy1 != None:
             xy = (xy0+xy1)/2.0
@@ -143,6 +140,15 @@ class Agent(object):
         self.id = str(self.__hash__())
         self.offspring = 0
 
+    def _setConfig(self,agentConfig):
+        self.targetAngle = agentConfig.targetAngle
+        self.maxError = agentConfig.maxError
+        self.maxAngleDev = agentConfig.maxAngleDev
+        self.minScore = agentConfig.minScore
+        self.offset = agentConfig.offset
+        self.yoffset = agentConfig.yoffset
+        self.aoffset = agentConfig.aoffset
+          
     def __str__(self):
         return 'Agent: {id}; angle: {angle:0.4f} ({ta:0.4f}+{ad:0.4f}); error: {err:0.3f} age: {age}; npts: {pts}; score: {score}; mean: {mean}'\
             .format(id=self.id,err=self.error,angle=self.angle,ta=self.targetAngle,ad=self.angleDev,

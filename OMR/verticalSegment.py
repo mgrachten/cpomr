@@ -4,7 +4,7 @@ import sys,os
 import logging
 import numpy as nu
 from utilities import cachedProperty
-from agent import assignToAgents, mergeAgents, makeAgentClass
+from agent import assignToAgents, mergeAgents, AgentConfig
 from imageUtil import normalize
 from utils import selectColumns
 from staff import assessStaffLineAgents
@@ -71,12 +71,11 @@ class VerticalSegment(object):
         agents = []
         defAngle = self.angle
         cols = selectColumns(self.vSums,self.colGroups)[0]
-        StaffAgent = makeAgentClass(targetAngle=defAngle,
-                                    maxAngleDev=2/180.,
-                                    #maxError=.05,
-                                    maxError=self.scrImage.getWidth()/2000.,
-                                    minScore=-2,
-                                    offset=self.top)
+        staffAgentConfig = AgentConfig(targetAngle=defAngle,
+                                       maxAngleDev=2/180.,
+                                       minScore=-2,
+                                       maxError=self.scrImage.getWidth()/2000.,
+                                       offset=self.top)
         f0 = os.path.splitext(self.scrImage.fn)[0]
         log = logging.getLogger(__name__)
         log.info('Default angle for this staff: {0:.5f} rad/PI'.format(defAngle))
@@ -87,7 +86,7 @@ class VerticalSegment(object):
         for i,c in enumerate(cols):
             if nFinalRuns == 0:
                 break
-            agentsnew,died = assignToAgents(self.getImgSegment()[:,c],agents,StaffAgent,
+            agentsnew,died = assignToAgents(self.getImgSegment()[:,c],agents,staffAgentConfig,
                                             self.scrImage.getWidth(),horz=c,fixAgents=finalStage)
             if len(agentsnew) > 3:
                 agentsnew,d = mergeAgents(agentsnew)

@@ -4,7 +4,7 @@ import sys,os,logging
 import numpy as nu
 from utils import Rotator
 from utilities import cachedProperty
-from agent import makeAgentClass, assignToAgents, mergeAgents
+from agent import AgentConfig, assignToAgents, mergeAgents
 from agentPainter import AgentPainter
 from utils import selectColumns
 from imageUtil import getAntiAliasedImg, smooth
@@ -146,11 +146,11 @@ class System(object):
         return agents
         
     def _getBarLineAgentsPart(self,img,vbins,yoffset,rightBorder,j):
-        BarAgent = makeAgentClass(targetAngle=.5,
-                                  maxAngleDev=4/180.,
-                                  maxError=self.staffLineWidth/7.0,
-                                  minScore=-2,
-                                  yoffset=yoffset)
+        BarAgentConfig = AgentConfig(targetAngle=.5,
+                                     maxAngleDev=4/180.,
+                                     maxError=self.staffLineWidth/7.0,
+                                     minScore=-2,
+                                     yoffset=yoffset)
         agents = []
         systemTopL = self.rotator.rotate(self.staffs[0].staffLineAgents[0].getDrawMean().reshape((1,2)))[0,0]
         systemBotL = self.rotator.rotate(self.staffs[1].staffLineAgents[-1].getDrawMean().reshape((1,2)))[0,0]
@@ -164,7 +164,7 @@ class System(object):
         K = int(.1*len(rows))
         for i,r in enumerate(rows[:K]):
             died = []
-            agentsnew,d = assignToAgents(img[r,:],agents,BarAgent,
+            agentsnew,d = assignToAgents(img[r,:],agents,BarAgentConfig,
                                          self.correctedImgSegment.shape[1],
                                          vert=r,fixAgents=False)
             died.extend(d)
