@@ -1,1 +1,0 @@
-1. bar removal: remove bars based on combination of length and peakedness
