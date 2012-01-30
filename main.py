@@ -58,7 +58,8 @@ if __name__ == '__main__':
         else:
             log.warn('Will not draw annotated scores (output directory not writeable)')
     if clh.barCoordinates:
-        if canWrite:
+        if clh.canWrite:
             piece.writeBarCoordinates(clh.outputDir)
         else:
             log.warn('Will not write bar coordinates (output directory not writeable)')
+
