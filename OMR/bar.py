@@ -9,6 +9,8 @@ from utils import Rotator
 from agentPainter import AgentPainter
 import scipy.stats
 
+logging.basicConfig(format='%(levelname)s: [%(name)s] %(message)s',level=logging.INFO)
+
 class Bar(object):
     def __init__(self,scoreImg,kl1,kl2):
         self.scoreImg = scoreImg
