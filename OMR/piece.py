@@ -26,22 +26,31 @@ pool = Pool()
 class Piece(object):
     def __init__(self,imgFiles):
         self.imgFiles = imgFiles
+    
+    @cachedProperty
+    def imgs(self):
         log = logging.getLogger(__name__)
+        imgs = []
         try:
-            self.imgs = pool.map(processPage,self.imgFiles)
+            imgs = pool.map(processPage,self.imgFiles)
         except KeyboardInterrupt:
             log.info('Got ^C while pool mapping, terminating the pool')
             pool.terminate()
             log.info('Pool is terminated')
+            log.info('Joining pool processes')
+            pool.close()
+            pool.join()
+            log.info('Join complete')
         except Exception, e:
             log.info('Got exception: %r, terminating the pool' % (e,))
             pool.terminate()
             log.info('Pool is terminated')
-        finally:
             log.info('Joining pool processes')
+            pool.close()
             pool.join()
             log.info('Join complete')
-    
+        return imgs
+
     def drawAnnotatedScores(self,outputDir):
         bar_i = 0
         for img in self.imgs:
