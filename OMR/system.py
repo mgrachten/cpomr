@@ -104,6 +104,10 @@ class System(object):
         return nu.sum(self.correctedImgSegment,1)
 
     @cachedProperty
+    def vSums(self):
+        return nu.sum(self.correctedImgSegment,0)
+
+    @cachedProperty
     def staffLineWidth(self):
         return nu.mean([a.getLineWidth() for a in self.staffs[0].staffLineAgents]+
                        [a.getLineWidth() for a in self.staffs[1].staffLineAgents])
@@ -123,6 +127,20 @@ class System(object):
         return [self.correctedImgSegment[:,lefts[i]:rights[i]]
                 for i in range(len(lefts))],lefts,rights
             
+    @cachedProperty
+    def leftRight(self):
+        vs = self.vSums[:]
+        W = max(8, nu.round((.05*len(vs))/2.0)*2 )
+        m = nu.median(vs)
+        idx = vs < .2*m
+        vs[idx] = -1
+        vs[nu.logical_not(idx)] = 1
+        w = nu.zeros(W)-1
+        w[int(W/2):] = 1
+        c = nu.convolve(vs,w,'same')
+        M = int(len(vs)/2)
+        return (nu.argmax(c[:M]), M+nu.argmin(c[M:]))
+
     @cachedProperty
     def barLineAgents(self):
         """
