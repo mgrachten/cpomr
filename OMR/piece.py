@@ -52,11 +52,21 @@ class Piece(object):
         return imgs
 
     def drawAnnotatedScores(self,outputDir):
-        bar_i = 0
+        bar_i = 1
         for img in self.imgs:
+            # this draws the annotations on the internally
+            # stored image
             img.drawAnnotatedScore(bar_i)
-            img.ap.writeImage(img.fn)
+            # this writes the internally stored image to a file
+            img.ap.writeImage(img.filenameBase+'.png')
             bar_i += len(img.bars)
-
+    def writeBarCoordinates(self,outputDir):
+        bar_i = 0
+        bb = []
+        for j,img in enumerate(self.imgs):
+            bb.append([j,img.barBBs(bar_i)])
+            bar_i += len(img.bars)
+            
+    
 if __name__ == '__main__':
     pass
