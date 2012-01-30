@@ -23,6 +23,30 @@ class Bar(object):
     def getBarline2(self):
         return self.scoreImg.systems[self.sys2].barLines[self.line2]
 
+    @cachedProperty
+    def boundingBoxes(self):
+        k = self.sys1
+        l = self.line1
+        bbs = [self.scoreImg.systems[k].rotator.derotate(self.scoreImg.systems[k].barLines[l].barVCoords[nu.array((0,-1))])]
+        l += 1
+        while k < self.sys2:
+            n = len(self.scoreImg.systems[k].barLines)
+            while l < n:
+                bbs.append(self.scoreImg.systems[k].rotator.derotate(self.scoreImg.systems[k].barLines[l].barVCoords[nu.array((0,-1))]))
+                l += 1
+            if self.scoreImg.systems[k].barLines[-1].estimatedType != RightBarLine:
+                lastVCoords = self.scoreImg.systems[k].barLines[-1].barVCoords[nu.array((0,-1))]
+                lastVCoords[:,1] = self.scoreImg.systems[k].leftRight[1]
+                bbs.append(self.scoreImg.systems[k].rotator.derotate(lastVCoords))
+            k += 1
+            l = 0
+        # k == self.sys2, l == 0
+        while l < self.line2:
+            bbs.append(self.scoreImg.systems[k].rotator.derotate(self.scoreImg.systems[k].barLines[l].barVCoords[nu.array((0,-1))]))
+            l += 1
+        bbs.append(self.scoreImg.systems[k].rotator.derotate(self.scoreImg.systems[k].barLines[l].barVCoords[nu.array((0,-1))]))
+        return bbs
+
     def getBBs(self):
         k = self.sys1
         l = self.line1
@@ -42,15 +66,31 @@ class Bar(object):
         bbs.append(self.scoreImg.systems[k].rotator.derotate(self.scoreImg.systems[k].barLines[l].barVCoords[nu.array((0,-1))]))
         return bbs
 
-    def draw(self,k=0):
-        b0 = self.getBBs()[0]
+    def draw(self,k=0,ptoggle=True):
+        #b0 = self.getBBs()[0]
+        bb = self.boundingBoxes
         alpha = .9
         color = (150,0,0)
         w = int(5*nu.mean([s.staffLineDistance for s in self.scoreImg.systems]))
         above = nu.array([w,0])
         below = nu.array([w,0])
-        self.scoreImg.ap.drawText('{0}'.format(k),b0[0,:]-above+(nu.array([w,w])/4.).astype(nu.int),
-                                         size = max(10,int(.3*w)),color=color,alpha=alpha)
+
+        b0 = bb[0]
+        textSize = max(10,int(.3*w))
+        self.scoreImg.ap.drawText('{0}'.format(k),b0[1,:]+below+(nu.array([-w-textSize,w])/4.).astype(nu.int),
+                                  size = textSize,color=color,alpha=alpha)
+        self.scoreImg.ap.paintLineSegment(b0[0,:]-above,b0[1,:]+below,color=color,alpha=alpha)
+
+        for i in range(0,len(bb)-1,2):
+            b0 = bb[i]
+            b1 = bb[i+1]
+            if ptoggle:
+                coord1 = b0[0,:]-above
+                coord2 = b1[0,:]-above
+            else:
+                coord1 = b0[1,:]+below
+                coord2 = b1[1,:]+below
+            self.scoreImg.ap.paintLineSegment(coord1,coord2,color=color,alpha=alpha)
 
 class LeftBarLine(object): pass
 class RightBarLine(object): pass

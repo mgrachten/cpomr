@@ -205,14 +205,28 @@ class ScoreImage(object):
             log().warn('No systems found in image {0}'.format(self.fn))
             return False
 
+        for k,system in enumerate(self.systems):
+            system.leftRight
+
+        ptoggle = False
         for k,bar in enumerate(self.bars):
-            bar.draw(bar_start+k)
+            bar.draw(bar_start+k,ptoggle)
+            ptoggle = not ptoggle
             #bbs = b.getBBs()
             # vertical lines:
             # first barline
             
+    def barBBs(self,start_bar=0):
+        bb = []
+        for k,bar in enumerate(self.bars):
+            print(bar.getBBs())
+
+    @cachedProperty
+    def filenameBase(self):
+        return os.path.splitext(os.path.basename(self.fn))[0]
 
     def drawImage(self):
+        """OBSOLETE"""
         if len(self.systems) == 0:
             log().warn('No systems found in image {0}'.format(self.fn))
             return False
@@ -286,7 +300,7 @@ class ScoreImage(object):
             self.ap.paintLineSegment(bbr[0,:],bbr[2,:],color=color,alpha=alpha)
             self.ap.paintLineSegment(bbr[1,:],bbr[3,:],color=color,alpha=alpha)
             #ap.writeImage('system-{0:02d}.png'.format(system.n))
-        self.ap.writeImage(self.fn)
-
+        self.ap.writeImage(self.fn)            
+        
 if __name__ == '__main__':
     pass
