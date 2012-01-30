@@ -200,6 +200,18 @@ class ScoreImage(object):
             i2 += 1
         return bars
 
+    def drawAnnotatedScore(self,bar_start=0):
+        if len(self.systems) == 0:
+            log().warn('No systems found in image {0}'.format(self.fn))
+            return False
+
+        for k,bar in enumerate(self.bars):
+            bar.draw(bar_start+k)
+            #bbs = b.getBBs()
+            # vertical lines:
+            # first barline
+            
+
     def drawImage(self):
         if len(self.systems) == 0:
             log().warn('No systems found in image {0}'.format(self.fn))

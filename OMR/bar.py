@@ -42,6 +42,15 @@ class Bar(object):
         bbs.append(self.scoreImg.systems[k].rotator.derotate(self.scoreImg.systems[k].barLines[l].barVCoords[nu.array((0,-1))]))
         return bbs
 
+    def draw(self,k=0):
+        b0 = self.getBBs()[0]
+        alpha = .9
+        color = (150,0,0)
+        w = int(5*nu.mean([s.staffLineDistance for s in self.scoreImg.systems]))
+        above = nu.array([w,0])
+        below = nu.array([w,0])
+        self.scoreImg.ap.drawText('{0}'.format(k),b0[0,:]-above+(nu.array([w,w])/4.).astype(nu.int),
+                                         size = max(10,int(.3*w)),color=color,alpha=alpha)
 
 class LeftBarLine(object): pass
 class RightBarLine(object): pass
