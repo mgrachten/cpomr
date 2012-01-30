@@ -18,7 +18,7 @@ class CommandLineHandler(object):
         self.parser.add_argument('filenames', metavar='FILENAME', type=str, nargs='+',
                                  help='Image filename; multiple filenames will be treated as ' \
                                      'the consecutive pages of a single piece')
-        self.parser.add_argument('--output-dir','-o', metavar='OUTPUTDIR', type=str,nargs=1,default='/tmp/',
+        self.parser.add_argument('--output-dir','-o', metavar='OUTPUTDIR', type=str,nargs=1,default=['/tmp/'],
                                  help='Write output to directory; directory will be created if ' \
                                      'it does not exist (default: %(default)s)',
                                  dest='outputDir')
@@ -29,21 +29,36 @@ class CommandLineHandler(object):
                                  help='Write bar bounding box coordinates to a text file;  output ' \
                                  'will be in txt format, and stored in OUTPUTDIR')
         self.args = self.parser.parse_args()
+        self.canWrite = False
         self.draw = self.args.draw
-        self.outputDir = self.args.outputDir
+        self.outputDir = self.args.outputDir[0]
         self.barCoordinates = self.args.barCoordinates
         self.filenames = self.args.filenames
 
 if __name__ == '__main__':
     clh = CommandLineHandler()
-    #imageFilenames = sys.argv[1:]
-    piece = Piece(clh.filenames)
-    if clh.barCoordinates:
-        piece.writeBarCoordinates(clh.outputDir)
-    if clh.draw:
-        piece.drawAnnotatedScores(clh.outputDir)
+    log = logging.getLogger(__name__)
+    clh.canWrite = False
+    if clh.outputDir:
+        try:
+            os.mkdir(clh.outputDir)
+        except OSError as e:
+            if e.errno != 17:
+                raise e
+        try:
+            assert os.access(clh.outputDir,os.W_OK)
+            clh.canWrite = True
+        except:
+            log.error('Can not write to output directory {0}'.format(clh.outputDir))
 
-if False: #__name__ == '__main__':
-    fns = sys.argv[1:]
-    si = ScoreImage(fns[0])
-    si.drawImage()
+    piece = Piece(clh.filenames)
+    if clh.draw:
+        if clh.canWrite:
+            piece.drawAnnotatedScores(clh.outputDir)
+        else:
+            log.warn('Will not draw annotated scores (output directory not writeable)')
+    if clh.barCoordinates:
+        if canWrite:
+            piece.writeBarCoordinates(clh.outputDir)
+        else:
+            log.warn('Will not write bar coordinates (output directory not writeable)')
