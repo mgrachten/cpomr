@@ -4,19 +4,17 @@ import sys,os,logging
 from scipy import signal,cluster,spatial
 import numpy as nu
 from utilities import argpartition, partition
-#from copy import deepcopy
+
 
 def assignToAgents(v,agents,agentConfig,M,vert=None,horz=None,fixAgents=False,maxWidth=nu.inf):
     data = nu.nonzero(v)[0]
     if len(data) > 1:
         candidates = [tuple(x) if len(x)==1 else (x[0],x[-1]) for x in 
                       nu.split(data,nu.nonzero(nu.diff(data)>1)[0]+1)]
-        #print(candidates)
     elif len(data) == 1:
         candidates = [tuple(data)]
     else:
         return agents
-    #print(candidates)
     if vert is not None:
         
         candidates = [[nu.array([vert,horz]) for horz in horzz] for horzz in candidates]
@@ -31,7 +29,6 @@ def assignToAgents(v,agents,agentConfig,M,vert=None,horz=None,fixAgents=False,ma
     if len(agents) == 0:
         unadopted.extend(range(len(candidates)))
     else:
-        #print('agents, candidates',len(agents),len(candidates))
         bids = nu.zeros((len(candidates),len(agents)))
         for i,c in enumerate(candidates):
             bids[i,:] = nu.array([nu.abs(a.bid(*c)) for a in agents])
@@ -56,7 +53,6 @@ def assignToAgents(v,agents,agentConfig,M,vert=None,horz=None,fixAgents=False,ma
                 newagent = Agent(agentConfig,nu.mean(nu.array(candidates[i]),0))
                 newagents.append(newagent)
     
-    #return [a for a in newagents if a.tick(fixAgents)]
     r = partition(lambda x: x.tick(fixAgents),newagents)
     return r.get(True,[]),r.get(False,[])
 
@@ -71,15 +67,7 @@ def mergeAgents(agents):
             if agents[i].points.shape[0] < 2 or agents[j].points.shape[0] < 2:
                 pdist.append(agents[i].maxError+1)
             else:
-                #cAngle = ((nu.arctan2(*(agents[i].mean-agents[j].mean))/nu.pi)+1)%1
-                # fast check: are means in positions likely for merge?
-                if True: #((cAngle-agents[i].targetAngle+.5)%1-.5) < agents[i].maxAngleDev:
-                #if nu.abs(cAngle-agents[i].targetAngle) < agents[i].maxAngleDev:
-                    # yes, do further check
-                    pdist.append(agents[i].mergeable(agents[j]))
-                else:
-                    # no, exclude
-                    pdist.append(agents[i].maxError+1)
+                pdist.append(agents[i].mergeable(agents[j]))
     pdist = nu.array(pdist)
     l = cluster.hierarchy.complete(pdist)
     c = cluster.hierarchy.fcluster(l,agents[0].maxError,criterion='distance')
@@ -100,9 +88,6 @@ def tls(X):
     """total least squares for 2 dimensions
     """
     u,s,v = nu.linalg.svd(X)
-    #v = v.T
-    #return ((nu.arctan2(-v[1,1],v[0,1])-nu.pi)%nu.pi)/nu.pi
-    #return ((nu.arctan2(-v[1,1],v[1,0])-nu.pi)%nu.pi)/nu.pi
     return (nu.arctan2(-v[1,1],v[1,0])/nu.pi+1)%1.0
 
 def getError(x,a):
@@ -181,15 +166,8 @@ class Agent(object):
 
     def mergeable(self,other):
         if other.age > 1 and self.age > 1:
-            #e0 = getError(other.points-self.mean,self.angle)/float(other.points.shape[0])
-            #e1 = getError(self.points-other.mean,other.angle)/float(self.points.shape[0])
             e0 = getError(other.getDrawPoints()-self.getDrawMean(),self.angle)/float(other.points.shape[0])
             e1 = getError(self.getDrawPoints()-other.getDrawMean(),other.angle)/float(self.points.shape[0])
-            #if 950 < self.mean[1] < 960 and 950 < other.mean[1] < 960:
-            #    print('mergeable:')
-            #    print(self)
-            #    print(other)
-            #    print((e0+e1)/2.0,self.maxError)
             return (e0+e1)/2.0
         else:
             return self.maxError+1
@@ -222,7 +200,6 @@ class Agent(object):
             self.score += 1
         else:
             self.score -= 1
-        #self.scorehist.append((self.age,self.score))
         self.adopted = False
         if immortal:
             return True
@@ -269,11 +246,9 @@ class Agent(object):
         return r
 
     def _getAngleDistance(self,a):
-        #return -nu.arctan2(*(xy-self.mean))/nu.pi
         return (a-self.targetAngle+.5)%1-.5
 
     def _getAngle(self,xy):
-        #return -nu.arctan2(*(xy-self.mean))/nu.pi
         return ((nu.arctan2(*((xy-self.mean)))/nu.pi)+1)%1
 
     def _getClosestAngle(self,a):
@@ -285,9 +260,6 @@ class Agent(object):
             error0 = nu.dot(xy0-self.mean,nu.array([nu.cos(self.angle*nu.pi),-nu.sin(self.angle*nu.pi)]))
             error1 = nu.dot(xy1-self.mean,nu.array([nu.cos(self.angle*nu.pi),-nu.sin(self.angle*nu.pi)]))
             lw = 1+nu.sum((xy0-xy1)**2)**.5
-            #print(self)
-            #print('lw',lw,self.getLineWidth(),self.getLineWidthStd())
-            #print('prepare point add',xy0,xy1)
             acceptableWidth = lw <= self.getLineWidth() + max(1,self.getLineWidthStd())
             if nu.sign(error0) != nu.sign(error1) and not acceptableWidth:
                 xy = self.getIntersection(xy0,xy1)
