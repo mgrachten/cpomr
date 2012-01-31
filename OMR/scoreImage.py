@@ -204,103 +204,55 @@ class ScoreImage(object):
         if len(self.systems) == 0:
             log().warn('No systems found in image {0}'.format(self.fn))
             return False
-
-        for k,system in enumerate(self.systems):
-            system.leftRight
-
-        ptoggle = False
+        color1 = (100,0,100)
+        color2 = (0,200,0)
+        alpha = .2
+        textcolor = (150,0,0)
         for k,bar in enumerate(self.bars):
-            bar.draw(bar_start+k,ptoggle)
-            ptoggle = not ptoggle
-            #bbs = b.getBBs()
-            # vertical lines:
-            # first barline
-            
-    def barBBs(self,start_bar=0):
-        bb = []
-        for k,bar in enumerate(self.bars):
-            print(bar.getBBs())
+            color = color1 if (bar_start+k)%2 == 0 else color2
+            #bar.draw(bar_start+k,ptoggle)
+            bar.drawAsRect(bar_start+k,color,alpha)
+            bar.drawText('{0}'.format(bar_start+k),color=textcolor,alpha=1)
 
-    @cachedProperty
-    def filenameBase(self):
-        return os.path.splitext(os.path.basename(self.fn))[0]
 
-    def drawImage(self):
-        """OBSOLETE"""
+    def drawAnnotatedScore2(self,bar_start=0):
         if len(self.systems) == 0:
             log().warn('No systems found in image {0}'.format(self.fn))
             return False
 
-        w = int(5*nu.mean([s.staffLineDistance for s in self.systems]))
-        above = nu.array([w,0])
-        below = nu.array([w,0])
-        alpha = .9
-        color = (150,0,0)
-        goodColor = (0,150,0)
-        badColor = (250,0,0)
-        for k,b in enumerate(self.bars):
-            bbs = b.getBBs()
-            # vertical lines:
-            # first barline
-            color = goodColor if b.getBarline1().confidence > 0 else badColor
-            self.ap.paintLineSegment(bbs[0][0,:]-above,bbs[0][1,:]+below,color=color,alpha=alpha)
-            # number
-            self.ap.drawText('{0}'.format(k),bbs[0][0,:]-above+(nu.array([w,w])/4.).astype(nu.int),
-                             size = max(10,int(.3*w)),color=color,alpha=alpha)
-
-            self.ap.drawText('{0:.1f}'.format(b.getBarline1().confidence),bbs[0][0,:]-above+(nu.array([2*w,0])/4.).astype(nu.int),
-                             size = max(10,int(.3*w)),color=color,alpha=alpha)
-
-            color = goodColor if b.getBarline2().confidence > 0 else badColor
-            # last barline
-            self.ap.paintLineSegment(bbs[-1][0,:]-above,bbs[-1][1,:]+below,color=color,alpha=alpha)
+        bb = [[bar_start+i]+list(bar.boundingBoxes) for i,bar in enumerate(self.bars)]
+        ptoggle = False
+        color1 = (100,10,50)
+        color2 = (10,100,50)
+        alpha = .3
+        for k,bar in enumerate(bb):
+            #bar.draw(bar_start+k,ptoggle)
+            i = bar[0]
+            cc = nu.array(bar[1:]).reshape((-1,4))
+            color = color1 if ptoggle else color2
+            for c in cc:
+                self.ap.paintRectangle(c[:2],c[2:],color,alpha)
+            ptoggle = not ptoggle
             
-            if b.sys1 == b.sys2:
-                # lower horizontal
-                coord1 = bbs[0][0,:]
-                coord2 = bbs[-1][0,:]
-                self.ap.paintLineSegment(coord1-above,coord2-above,color=color,alpha=alpha)
-                # upper horizontal
-                coord1 = bbs[0][1,:]
-                coord2 = bbs[-1][1,:]
-                self.ap.paintLineSegment(coord1+below,coord2+below,color=color,alpha=alpha)
-            
-            #for bb in bbs:
-            for i in range(len(bbs)-1):
-                l1 = bbs[i]
-                l2 = bbs[i+1]
-                if i == len(bbs)-2: #l1.sys1 == l2.sys2:
-                    endline = l2
-                else:
-                    hoffset = w
-                    endline = l1+nu.array([0,hoffset])
-                # lower horizontal
-                coord1 = l1[0,:]
-                coord2 = endline[0,:]
-                self.ap.paintLineSegment(coord1-above,coord2-above,color=color,alpha=alpha)
-                # upper horizontal
-                coord1 = l1[1,:]
-                coord2 = endline[1,:]
-                self.ap.paintLineSegment(coord1+below,coord2+below,color=color,alpha=alpha)
-                
-        alpha = .1
-        color = (10,150,10)
+    @cachedProperty
+    def filenameBase(self):
+        return os.path.splitext(os.path.basename(self.fn))[0]
 
-        for system in self.systems:
-            #ap = AgentPainter(system.correctedImgSegment)
-            M,N = system.correctedImgSegment.shape
-            shrink = 3
-            bb = nu.array([[1,1],
-                           [M-shrink,N-shrink],
-                           [1,N-shrink],
-                           [M-shrink,1]])
-            bbr = system.rotator.derotate(bb)
-            self.ap.paintLineSegment(bbr[0,:],bbr[3,:],color=color,alpha=alpha)
-            self.ap.paintLineSegment(bbr[1,:],bbr[2,:],color=color,alpha=alpha)
-            self.ap.paintLineSegment(bbr[0,:],bbr[2,:],color=color,alpha=alpha)
-            self.ap.paintLineSegment(bbr[1,:],bbr[3,:],color=color,alpha=alpha)
-            #ap.writeImage('system-{0:02d}.png'.format(system.n))
-        self.ap.writeImage(self.fn)            
+    #     for system in self.systems:
+    #         #ap = AgentPainter(system.correctedImgSegment)
+    #         M,N = system.correctedImgSegment.shape
+    #         shrink = 3
+    #         bb = nu.array([[1,1],
+    #                        [M-shrink,N-shrink],
+    #                        [1,N-shrink],
+    #                        [M-shrink,1]])
+    #         bbr = system.rotator.derotate(bb)
+    #         self.ap.paintLineSegment(bbr[0,:],bbr[3,:],color=color,alpha=alpha)
+    #         self.ap.paintLineSegment(bbr[1,:],bbr[2,:],color=color,alpha=alpha)
+    #         self.ap.paintLineSegment(bbr[0,:],bbr[2,:],color=color,alpha=alpha)
+    #         self.ap.paintLineSegment(bbr[1,:],bbr[3,:],color=color,alpha=alpha)
+    #         #ap.writeImage('system-{0:02d}.png'.format(system.n))
+    #     self.ap.writeImage(self.fn)            
         
 if __name__ == '__main__':
     pass

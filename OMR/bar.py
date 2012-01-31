@@ -24,13 +24,18 @@ class Bar(object):
         return self.scoreImg.systems[self.sys2].barLines[self.line2]
 
     @cachedProperty
-    def boundingBoxes(self):
+    def cornerCoordinates(self):
         k = self.sys1
         l = self.line1
         bbs = [self.scoreImg.systems[k].rotator.derotate(self.scoreImg.systems[k].barLines[l].barVCoords[nu.array((0,-1))])]
         l += 1
         while k < self.sys2:
             n = len(self.scoreImg.systems[k].barLines)
+            if l == 0 and self.scoreImg.systems[k].barLines[l].estimatedType != LeftBarLine:
+                # TODO: add coordinates at beginning of bar, if there's no barline there
+                #lastVCoords[:,1] = self.scoreImg.systems[k].leftRight[1]
+                #bbs.append(self.scoreImg.systems[k].rotator.derotate(lastVCoords))
+                pass
             while l < n:
                 bbs.append(self.scoreImg.systems[k].rotator.derotate(self.scoreImg.systems[k].barLines[l].barVCoords[nu.array((0,-1))]))
                 l += 1
@@ -47,28 +52,35 @@ class Bar(object):
         bbs.append(self.scoreImg.systems[k].rotator.derotate(self.scoreImg.systems[k].barLines[l].barVCoords[nu.array((0,-1))]))
         return bbs
 
-    def getBBs(self):
-        k = self.sys1
-        l = self.line1
-        bbs = [self.scoreImg.systems[k].rotator.derotate(self.scoreImg.systems[k].barLines[l].barVCoords[nu.array((0,-1))])]
-        l += 1
-        while k < self.sys2:
-            n = len(self.scoreImg.systems[k].barLines)
-            while l < n:
-                bbs.append(self.scoreImg.systems[k].rotator.derotate(self.scoreImg.systems[k].barLines[l].barVCoords[nu.array((0,-1))]))
-                l += 1
-            k += 1
-            l = 0
-        # k == self.sys2, l == 0
-        while l < self.line2:
-            bbs.append(self.scoreImg.systems[k].rotator.derotate(self.scoreImg.systems[k].barLines[l].barVCoords[nu.array((0,-1))]))
-            l += 1
-        bbs.append(self.scoreImg.systems[k].rotator.derotate(self.scoreImg.systems[k].barLines[l].barVCoords[nu.array((0,-1))]))
-        return bbs
+    @cachedProperty
+    def boundingBoxes(self):
+        cc = self.cornerCoordinates
+        bb = []
+        for i in range(0,len(cc),2):
+            topleft = cc[i][0,:].astype(nu.int)
+            botright = cc[i+1][1,:].astype(nu.int)
+            bb.append((topleft,botright))
+        return nu.array(bb).ravel()
 
+    def drawAsRect(self,k=0,color=(100,100,100),alpha=.5):
+        cc = self.boundingBoxes.reshape((-1,4))
+        for c in cc:
+            self.scoreImg.ap.paintRectangle(c[:2],c[2:],color,alpha)
+            
+    def drawText(self,text,size=2,color=(100,100,100),alpha=.5,position='above'):
+        #w = int(5*nu.mean([s.staffLineDistance for s in self.scoreImg.systems]))
+        sld = self.scoreImg.systems[self.sys1].staffLineDistance
+        w = int(3*sld)
+        textSize = max(10,int(size*sld))
+        if position == 'above':
+            pos = nu.array([-w,w])+self.cornerCoordinates[0][0,:]
+        else:
+            pos = nu.array([w,w])+self.cornerCoordinates[0][1,:]-nu.array([w+textSize,0])/4.
+        self.scoreImg.ap.drawText(text,pos.astype(nu.int),size = textSize,color=color,alpha=alpha)
+        
     def draw(self,k=0,ptoggle=True):
         #b0 = self.getBBs()[0]
-        bb = self.boundingBoxes
+        bb = self.cornerCoordinates
         alpha = .9
         color = (150,0,0)
         w = int(5*nu.mean([s.staffLineDistance for s in self.scoreImg.systems]))

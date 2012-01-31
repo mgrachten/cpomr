@@ -60,13 +60,15 @@ class Piece(object):
             # this writes the internally stored image to a file
             img.ap.writeImage(img.filenameBase+'.png')
             bar_i += len(img.bars)
+
     def writeBarCoordinates(self,outputDir):
         bar_i = 0
         bb = []
         for j,img in enumerate(self.imgs):
-            bb.append([j,img.barBBs(bar_i)])
+            bb.extend([[j,bar_i+i]+list(bar.boundingBoxes) for i,bar in enumerate(img.bars)])
             bar_i += len(img.bars)
-            
+        img.filenameBase
+        return bb
     
 if __name__ == '__main__':
     pass
