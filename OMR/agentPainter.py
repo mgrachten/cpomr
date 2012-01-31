@@ -57,8 +57,7 @@ class AgentPainter(object):
         self.img = self.imgOrig.copy()
 
     def drawText(self, text, pos, size=30, color=(100,100,100), alpha=.5):
-        font = ImageFont.truetype('/usr/share/fonts/truetype/ttf-ubuntu-title/Ubuntu-Title.ttf', 
-                                  size)
+        font = ImageFont.truetype('./fonts/Ubuntu-Title.ttf', size)
         size = font.getsize(text) # Returns the width and height of the given text, as a 2-tuple.
         im = Image.new('L', size, 255) # Create a blank image with the given size
         draw = ImageDraw.Draw(im)
@@ -156,6 +155,12 @@ class AgentPainter(object):
         self.img[1,:,:].flat[idx] = nu.minimum(255,nu.maximum(0,(1-alpha)*self.img[1,:,:].flat[idx]+alpha*color[1])).astype(nu.uint8)
         self.img[2,:,:].flat[idx] = nu.minimum(255,nu.maximum(0,(1-alpha)*self.img[2,:,:].flat[idx]+alpha*color[2])).astype(nu.uint8)
 
+    def paintRectangle(self,topleft,botright,color,alpha=1):
+        x0,y0 = topleft
+        x1,y1 = botright
+        self.img[0,x0:x1,y0:y1] = nu.minimum(255,nu.maximum(0,(1-alpha)*self.img[0,x0:x1,y0:y1]+alpha*color[0])).astype(nu.uint8)
+        self.img[1,x0:x1,y0:y1] = nu.minimum(255,nu.maximum(0,(1-alpha)*self.img[1,x0:x1,y0:y1]+alpha*color[1])).astype(nu.uint8)
+        self.img[2,x0:x1,y0:y1] = nu.minimum(255,nu.maximum(0,(1-alpha)*self.img[2,x0:x1,y0:y1]+alpha*color[2])).astype(nu.uint8)
 
     def paint(self,coord,color,alpha=1):
         #print('point',coord,img.shape)
