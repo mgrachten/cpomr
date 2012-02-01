@@ -58,17 +58,31 @@ class Piece(object):
             # stored image
             img.drawAnnotatedScore(bar_i)
             # this writes the internally stored image to a file
-            img.ap.writeImage(img.filenameBase+'.png')
+            img.ap.writeImage(os.path.join(outputDir,img.filenameBase+'.png'),absolute=True)
             bar_i += len(img.bars)
 
-    def writeBarCoordinates(self,outputDir):
+    @cachedProperty
+    def barCoordinates(self):
         bar_i = 0
         bb = []
         for j,img in enumerate(self.imgs):
             bb.extend([[j,bar_i+i]+list(bar.boundingBoxes) for i,bar in enumerate(img.bars)])
             bar_i += len(img.bars)
-        img.filenameBase
         return bb
-    
+
+    def writeBarCoordinates(self,outputDir):
+        cpfx = os.path.commonprefix([x.filenameBase for x in self.imgs])
+        fname = ''.join([cpfx, '-' if len(cpfx) > 0 else '', 'barBoundingBoxes.txt'])
+        fname = os.path.join(outputDir,fname)
+        log = logging.getLogger(__name__)
+        try:
+            log.info('Writing bar bounding boxes to file {0}'.format(fname))
+            with open(fname,'w') as f:
+                f.write('# pageNr barNr (topLeft_v topLeft_h botRight_v botRight_h)+')
+                for line in self.barCoordinates:
+                    f.write(' '.join(['{0:d}'.format(x) for x in line])+'\n')
+        except OSError:
+            log.error('Cannot write to file {0}'.format(fname))
+
 if __name__ == '__main__':
     pass
