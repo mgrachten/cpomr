@@ -2,12 +2,10 @@
 
 import sys,os,logging
 import numpy as nu
-from utils import Rotator
 from utilities import cachedProperty
 from agent import AgentConfig, assignToAgents, mergeAgents
 from agentPainter import AgentPainter
-from utils import selectColumns
-from imageUtil import getAntiAliasedImg, smooth
+from imageUtil import getAntiAliasedImg, smooth, Rotator, selectColumns
 from bar import BarCandidate
 
 def log():
