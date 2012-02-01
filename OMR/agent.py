@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import sys,os,logging
-from scipy import signal,cluster,spatial
+from scipy import cluster
 import numpy as nu
 from utilities import argpartition, partition
 
