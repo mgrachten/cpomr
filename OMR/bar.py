@@ -3,7 +3,7 @@
 import sys, logging
 import numpy as nu
 from itertools import chain,product
-from utilities import getter,cachedProperty
+from utilities import cachedProperty
 from imageUtil import getAntiAliasedImg,findValleys,findPeaks,smooth
 from utils import Rotator
 from agentPainter import AgentPainter
