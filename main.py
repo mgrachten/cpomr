@@ -41,7 +41,7 @@ if __name__ == '__main__':
     clh.canWrite = False
     if clh.outputDir:
         try:
-            os.mkdir(clh.outputDir)
+            os.makedirs(clh.outputDir)
         except OSError as e:
             if e.errno != 17:
                 raise e
