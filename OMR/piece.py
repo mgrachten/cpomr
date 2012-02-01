@@ -3,9 +3,8 @@
 import sys,os, pickle, logging
 import bar
 import numpy as nu
-from utilities import cachedProperty
+from utilities import cachedProperty, FakePool
 from multiprocessing import Pool
-from utilities import FakePool
 from scoreImage import ScoreImage
 
 # all this KeyboardInterrupt stuff is a workaround of bug
