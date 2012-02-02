@@ -1,15 +1,33 @@
-CPOMR
+CPOMR - Optical music recognition in python
 
-Optical music recognition
+[Description]
 
-Copyright:
 
-Usage:
+USAGE
 
-...
+For extracting PNG images from PDF sheet music, do:
 
-Dependencies:
+$ ./extract_pages_from_pdf.sh /PATH/TO/FOO.pdf
 
-python-scipy (stats, cluster)
-python-numpy
-python-imaging
+This will create a directory /PATH/TO/FOO and 
+put the PNG files extracted from the PDF files
+in that directory
+
+Then you can run the OMR program on the pdfs:
+
+$ ./cpomr.py -o /PATH/TO/OUTPUT -d -b /PATH/TO/FOO/*.png
+
+This wil create a directory /PATH/TO/OUTPUT (if
+necessary) and copy annotated images in that directory.
+
+
+DEPENDENCIES
+
+For extracting PNG images from pdf sheet music:
+    * graphicsmagick
+    * gnu parallel (optional)
+
+For OMR:
+    * python-scipy
+    * python-numpy
+    * python-imaging
