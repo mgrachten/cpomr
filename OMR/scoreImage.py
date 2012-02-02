@@ -1,17 +1,33 @@
 #!/usr/bin/env python
 
+#    Copyright 2012, Maarten Grachten.
+#
+#    This file is part of CPOMR.
+#
+#    CPOMR is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    CPOMR is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with CPOMR.  If not, see <http://www.gnu.org/licenses/>.
+
 import sys,os, pickle, logging
 import numpy as nu
-from utilities import cachedProperty
-from imageUtil import writeImageData, getPattern, findValleys, smooth, normalize
 from scipy.stats import distributions
 
+from utilities import cachedProperty
+from imageUtil import writeImageData, getPattern, findValleys, smooth, normalize
 from agentPainter import AgentPainter
 from verticalSegment import VerticalSegment, identifyNonStaffSegments
 from system import System
 from staff import Staff
 from bar import RightBarLine,LeftBarLine,Bar
-from itertools import chain
 
 def log():
     return logging.getLogger(__name__)

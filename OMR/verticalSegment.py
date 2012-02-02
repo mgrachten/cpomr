@@ -1,6 +1,23 @@
 #!/usr/bin/env python
 
-import sys,os
+#    Copyright 2012, Maarten Grachten.
+#
+#    This file is part of CPOMR.
+#
+#    CPOMR is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    CPOMR is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with CPOMR.  If not, see <http://www.gnu.org/licenses/>.
+
+import os
 import logging
 import numpy as nu
 from utilities import cachedProperty
