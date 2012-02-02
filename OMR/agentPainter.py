@@ -21,7 +21,7 @@ import os,logging
 import numpy as nu
 from PIL import ImageDraw,ImageFont,Image
 from imageUtil import getImageData, writeImageData, makeMask, normalize, jitterImageEdges,getPattern
-from utilities import makeColors
+from misc.utilities import makeColors
 
 def log():
     return logging.getLogger(__name__)

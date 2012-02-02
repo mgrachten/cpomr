@@ -19,7 +19,7 @@
 
 import logging
 import numpy as nu
-from utilities import cachedProperty
+from misc.utilities import cachedProperty
 
 def sortStaffLineAgents(agents,k=10):
     agents.sort(key=lambda x: -x.score)

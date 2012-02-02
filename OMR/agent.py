@@ -22,7 +22,7 @@
 import sys,os,logging
 from scipy import cluster
 import numpy as nu
-from utilities import argpartition, partition
+from misc.utilities import argpartition, partition
 
 
 def assignToAgents(v,agents,agentConfig,M,vert=None,horz=None,fixAgents=False,maxWidth=nu.inf):

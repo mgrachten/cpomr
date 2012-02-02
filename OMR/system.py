@@ -19,7 +19,7 @@
 
 import logging
 import numpy as nu
-from utilities import cachedProperty
+from misc.utilities import cachedProperty
 from agent import AgentConfig, assignToAgents, mergeAgents
 from agentPainter import AgentPainter
 from imageUtil import getAntiAliasedImg, smooth, Rotator, selectColumns

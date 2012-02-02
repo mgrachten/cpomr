@@ -20,7 +20,7 @@
 import os, logging
 #import bar
 import numpy as nu
-from utilities import cachedProperty, FakePool
+from misc.utilities import cachedProperty, FakePool
 from multiprocessing import Pool
 from scoreImage import ScoreImage
 

@@ -21,7 +21,7 @@ import sys,os, pickle, logging
 import numpy as nu
 from scipy.stats import distributions
 
-from utilities import cachedProperty
+from misc.utilities import cachedProperty
 from imageUtil import writeImageData, getPattern, findValleys, smooth, normalize
 from agentPainter import AgentPainter
 from verticalSegment import VerticalSegment, identifyNonStaffSegments

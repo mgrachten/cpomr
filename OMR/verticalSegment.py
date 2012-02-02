@@ -20,7 +20,7 @@
 import os
 import logging
 import numpy as nu
-from utilities import cachedProperty
+from misc.utilities import cachedProperty
 from agent import assignToAgents, mergeAgents, AgentConfig
 from imageUtil import normalize, selectColumns
 from staff import assessStaffLineAgents

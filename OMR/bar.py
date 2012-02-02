@@ -19,7 +19,7 @@
 
 import logging
 import numpy as nu
-from utilities import cachedProperty
+from misc.utilities import cachedProperty
 from imageUtil import getAntiAliasedImg,findValleys,findPeaks,smooth,Rotator
 from agentPainter import AgentPainter
 import scipy.stats
