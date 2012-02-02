@@ -271,7 +271,6 @@ class System(object):
     @cachedProperty
     def correctedImgSegment(self):
         halfSystemWidth = int((self.getSystemWidth()-1)/2)
-        #xx,yy = nu.mgrid[0:self.getSystemHeight(),-halfSystemWidth:halfSystemWidth]
         xx,yy = nu.mgrid[0:self.getSystemHeight(),-halfSystemWidth:halfSystemWidth]
         yy += self.getLowerMidLocal()[1]
         xxr,yyr = self.rotator.derotate(xx,yy)

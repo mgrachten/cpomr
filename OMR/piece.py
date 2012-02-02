@@ -18,7 +18,6 @@
 #    along with CPOMR.  If not, see <http://www.gnu.org/licenses/>.
 
 import os, logging
-#import bar
 import numpy as nu
 from misc.utilities import cachedProperty, FakePool
 from multiprocessing import Pool
