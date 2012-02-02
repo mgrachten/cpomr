@@ -1,2 +1,0 @@
-bar #ff0000 .7 bar01.png .95 bar02.png
-n #00ff00 .3 nhead-black-between.png .3 nhead-black-on.png
