@@ -71,15 +71,38 @@ class Rotator(object):
         return xx+self.og[0],yy+self.og[1]
 
 
-def getAntiAliasedImg(img,xx,yy):
+def findBeginEnd(N,maxes,mins,margin=0):
+    over = nu.where(maxes > N-margin)[0]
+    under = nu.where(mins < margin)[0]
+    return (nu.max(under) if len(under) > 0 else 0,
+            nu.min(over) if len(over) > 0 else len(maxes))
+
+def trimCoordinates(shape,xx,yy,margin=0):
+    """
+    If necessary, trim the coordinates of xx and yy (jointly),
+    such that all values in xx and yy are valid inside shape
+    """
+    xb,xe = findBeginEnd(shape[0],nu.max(xx,1),nu.min(xx,1),margin)
+    yb,ye = findBeginEnd(shape[1],nu.max(yy,0),nu.min(yy,0),margin)
+    return xx[xb:xe,yb:ye],yy[xb:xe,yb:ye]
+
+def getAntiAliasedImg(img,xx,yy,trim=True):
+    #jitter = .001
+    #xx += nu.random.normal(0,jitter,xx.shape)
+    #yy += nu.random.normal(0,jitter,yy.shape)
+    if trim:
+        xx,yy = trimCoordinates(img.shape,xx,yy,margin=1)
+
     xf = nu.floor(xx).astype(nu.int)
     xc = nu.ceil(xx).astype(nu.int)
     yf = nu.floor(yy).astype(nu.int)
     yc = nu.ceil(yy).astype(nu.int)
+
     wxc = xx%1
     wxf = 1-wxc
     wyc = yy%1
     wyf = 1-wyc
+
     return (((wxf+wyf)*img[xf,yf] +
 	     (wxf+wyc)*img[xf,yc] +
 	     (wxc+wyf)*img[xc,yf] +
