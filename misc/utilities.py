@@ -22,7 +22,7 @@ from numpy import array,size,std
 import numpy as nu
 import subprocess
 from math import ceil
-from functools import update_wrapper
+from functools import update_wrapper, wraps
 import itertools
 
 class MissingModuleError(Exception):
@@ -71,8 +71,9 @@ def cachedProperty (func ,name =None ):
             return computation()
     """
     if name is None :
-        name = func .__name__
+        name = func.__name__
 
+    @wraps(func)
     def _get (self ):
         try :
             return self.__dict__[name]
@@ -80,13 +81,17 @@ def cachedProperty (func ,name =None ):
             self.__dict__[name] = func(self)
             return self.__dict__[name]
 
+    @wraps(func)
     def _set (self,value):
         self.__dict__[name] = value
 
+    @wraps(func)
     def _del (self ):
         self.__dict__.pop(name,None)
 
-    update_wrapper(_get, func)
+    #update_wrapper(_get, func)
+    #update_wrapper(_set, func)
+    #update_wrapper(_del, func)
     return property(_get, _set, _del)
 
 def getter(f):
