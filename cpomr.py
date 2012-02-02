@@ -11,9 +11,6 @@ logging.basicConfig(format='%(levelname)s: [%(name)s] %(message)s',level=logging
 class CommandLineHandler(object):
     def __init__(self):
         self.parser = argparse.ArgumentParser(description='Detect music notation in sheet music')
-        # options:
-        # * draw annotated images
-        # * write coordinates to text file
         self.parser.add_argument('filenames', metavar='FILENAME', type=str, nargs='+',
                                  help='Image filename; multiple filenames will be treated as ' \
                                      'the consecutive pages of a single piece')
